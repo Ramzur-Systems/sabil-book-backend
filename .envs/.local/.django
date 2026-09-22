@@ -9,6 +9,10 @@ REDIS_URL=redis://redis:6379/0
 # Celery
 # ------------------------------------------------------------------------------
 
+# KYC/AML provider webhook (stub)
+# ------------------------------------------------------------------------------
+KYC_WEBHOOK_SECRET=local-dev-kyc-webhook-secret
+
 # Flower
 CELERY_FLOWER_USER=UCcFDUBBpcaPXjJGgCFCKtlTRqjbARBf
 CELERY_FLOWER_PASSWORD=BVd1gtkFlZ2ks3DSOa6S4IvwGS9SGkNRJLJb7iVs8PV69Tl8wn3hAEc3Uv05Y7BW

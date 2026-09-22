@@ -6,7 +6,6 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.db.models import CharField
 from django.db.models import EmailField
-from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
 from .managers import UserManager
@@ -32,19 +31,16 @@ class User(AbstractUser):
     email = EmailField(_("email address"), unique=True)
     username = None  # type: ignore[assignment]
     country = CharField(_("User location"), blank=True, max_length=255)
+    preferred_language = CharField(
+        _("Preferred language"),
+        blank=True,
+        max_length=10,
+        default="en",
+    )
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
 
     objects: ClassVar[UserManager] = UserManager()
-
-    def get_absolute_url(self) -> str:
-        """Get URL for user's detail view.
-
-        Returns:
-            str: URL for user detail.
-
-        """
-        return reverse("users:detail", kwargs={"pk": self.id})
 
 
 class ProviderProfile(models.Model):
@@ -60,6 +56,7 @@ class ProviderProfile(models.Model):
         related_name="provider_profile",
         verbose_name=_("user"),
     )
+    country = CharField(_("Provider country"), blank=True, max_length=255)
     kyc_status = models.CharField(
         _("KYC status"),
         max_length=20,
