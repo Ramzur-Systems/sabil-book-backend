@@ -1,0 +1,3 @@
+The customer accepted the result for “{{ request_title }}”.
+
+The payout process for order #{{ order_id }} can now continue.

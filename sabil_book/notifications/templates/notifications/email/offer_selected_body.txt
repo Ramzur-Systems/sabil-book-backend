@@ -1,0 +1,3 @@
+Your offer for “{{ request_title }}” was selected.
+
+Open offer #{{ offer_id }} to review the next steps.

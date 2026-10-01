@@ -109,6 +109,7 @@ class Order(models.Model):
     class OrderStatus(models.TextChoices):
         FUNDED = "funded", _("Funded")
         SENT = "sent", _("Sent")  # provider marked the work delivered
+        REVISION_REQUESTED = "revision_requested", _("Revision requested")
         # reached either from SENT with no dispute, or from DISPUTE resolved
         # in the provider's favor (payout issued)
         CONFIRMED = "confirmed", _("Confirmed")
