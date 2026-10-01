@@ -13,6 +13,7 @@ services:
     depends_on:
       - postgres
       - redis
+      - mailhog
     volumes:
       - /app/.venv
       - .:/app:z
@@ -44,6 +45,12 @@ services:
     volumes:
       - sabil_book_local_redis_data:/data
 
+  mailhog:
+    image: docker.io/mailhog/mailhog:v1.0.1
+    container_name: sabil_book_local_mailhog
+    ports:
+      - '8025:8025'
+
   celeryworker:
     <<: *django
     image: sabil_book_local_celeryworker
@@ -51,6 +58,7 @@ services:
     depends_on:
       - redis
       - postgres
+      - mailhog
     ports: []
     command: /start-celeryworker
 

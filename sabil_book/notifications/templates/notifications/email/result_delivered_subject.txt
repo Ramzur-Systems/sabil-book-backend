@@ -1,0 +1,1 @@
+Result delivered for order #{{ order_id }}

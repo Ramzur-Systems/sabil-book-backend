@@ -46,10 +46,20 @@ CACHES = {
 # EMAIL
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#email-backend
+RUNNING_IN_DOCKER = env.bool("USE_DOCKER", default=False)
 EMAIL_BACKEND = env(
     "DJANGO_EMAIL_BACKEND",
-    default="django.core.mail.backends.console.EmailBackend",
+    default=(
+        "django.core.mail.backends.smtp.EmailBackend"
+        if RUNNING_IN_DOCKER
+        else "django.core.mail.backends.console.EmailBackend"
+    ),
 )
+EMAIL_HOST = env(
+    "DJANGO_EMAIL_HOST",
+    default="mailhog" if RUNNING_IN_DOCKER else "localhost",
+)
+EMAIL_PORT = env.int("DJANGO_EMAIL_PORT", default=1025 if RUNNING_IN_DOCKER else 25)
 
 # WhiteNoise
 # ------------------------------------------------------------------------------
@@ -75,7 +85,7 @@ DEBUG_TOOLBAR_CONFIG = {
 }
 # https://django-debug-toolbar.readthedocs.io/en/latest/installation.html#internal-ips
 INTERNAL_IPS = ["127.0.0.1", "10.0.2.2"]
-if env("USE_DOCKER") == "yes":
+if RUNNING_IN_DOCKER:
     import socket
 
     hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
