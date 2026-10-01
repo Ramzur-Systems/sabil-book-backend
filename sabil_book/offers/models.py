@@ -1,5 +1,8 @@
 # Create your models here.
+from decimal import Decimal
+
 from django.conf import settings
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import CharField
 from django.db.models import DateTimeField
@@ -30,10 +33,18 @@ class Offer(models.Model):
         verbose_name=_("provider"),
     )
     price = models.DecimalField(
-        _("Offering Price"),
         max_digits=10,
         decimal_places=2,
-        default=0,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name=_("Offer Price"),
+    )
+    delivery_days = models.PositiveIntegerField(
+        validators=[MinValueValidator(1)],
+        verbose_name=_("Delivery days"),
+    )
+    comment = models.TextField(
+        blank=True,
+        verbose_name=_("Offer Comment"),
     )
     status = CharField(
         _("Offer status"),
@@ -50,6 +61,19 @@ class Offer(models.Model):
                 fields=["request", "provider"],
                 condition=Q(status__in=["pending", "accepted"]),
                 name="unique_active_offer_per_provider_per_request",
+            ),
+            models.UniqueConstraint(
+                fields=["request"],
+                condition=Q(status__in=["accepted"]),
+                name="unique_accepted_offer_per_request",
+            ),
+            models.CheckConstraint(
+                condition=Q(price__gt=0),
+                name="offer_price_positive",
+            ),
+            models.CheckConstraint(
+                condition=Q(delivery_days__gt=0),
+                name="offer_delivery_days_positive",
             ),
         ]
 

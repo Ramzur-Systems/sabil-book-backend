@@ -44,5 +44,8 @@ CHANNEL_LAYERS = {
         "BACKEND": "channels.layers.InMemoryChannelLayer",
     },
 }
+# KYC/AML provider webhook
+# ------------------------------------------------------------------------------
+KYC_WEBHOOK_SECRET = "test-kyc-webhook-secret"  # noqa: S105
 # Your stuff...
 # ------------------------------------------------------------------------------

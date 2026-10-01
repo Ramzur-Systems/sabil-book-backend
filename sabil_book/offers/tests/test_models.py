@@ -4,6 +4,8 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import pytest
+from django.db import IntegrityError
+from django.db import transaction
 from django.utils import timezone
 
 from sabil_book.offers.models import Message
@@ -23,15 +25,27 @@ class TestOffer:
     def test_defaults_to_pending_status(self, db):
         request = RequestFactory.create()
         provider = ProviderProfileFactory.create()
-        offer = Offer.objects.create(request=request, provider=provider)
+        offer = Offer.objects.create(
+            request=request,
+            provider=provider,
+            price=Decimal("100.00"),
+            delivery_days=7,
+        )
         assert offer.status == Offer.OfferStatus.PENDING
 
-    def test_price_defaults_to_zero(self, db):
-        request = RequestFactory.create()
-        provider = ProviderProfileFactory.create()
-        offer = Offer.objects.create(request=request, provider=provider)
-        offer.refresh_from_db()
-        assert offer.price == Decimal("0.00")
+    def test_comment_defaults_to_empty_string(self, db):
+        offer = OfferFactory.create()
+        assert offer.comment == ""
+
+    @pytest.mark.parametrize("price", [Decimal("0.00"), Decimal("-0.01")])
+    def test_price_must_be_positive(self, db, price):
+        with pytest.raises(IntegrityError), transaction.atomic():
+            OfferFactory.create(price=price)
+
+    @pytest.mark.parametrize("delivery_days", [0, -1])
+    def test_delivery_days_must_be_positive(self, db, delivery_days):
+        with pytest.raises(IntegrityError), transaction.atomic():
+            OfferFactory.create(delivery_days=delivery_days)
 
     def test_str_includes_provider_request_and_status(self, db):
         offer = OfferFactory.create(status=Offer.OfferStatus.ACCEPTED)
@@ -52,6 +66,13 @@ class TestOffer:
         request = RequestFactory.create()
         OfferFactory.create_batch(offer_count, request=request)
         assert request.offers.count() == offer_count
+
+    def test_request_cannot_have_multiple_accepted_offers(self, db):
+        request = RequestFactory.create()
+        OfferFactory.create(request=request, status=Offer.OfferStatus.ACCEPTED)
+
+        with pytest.raises(IntegrityError), transaction.atomic():
+            OfferFactory.create(request=request, status=Offer.OfferStatus.ACCEPTED)
 
 
 class TestMessage:

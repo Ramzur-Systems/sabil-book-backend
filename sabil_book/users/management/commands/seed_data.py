@@ -7,9 +7,11 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.core.management.base import CommandError
 from django.db import transaction
+from django.utils import timezone
 
-from sabil_book.offers.models import Offer
 from sabil_book.offers.models import Order
+from sabil_book.offers.services import accept_offer
+from sabil_book.requests.models import Request
 
 DISPUTE_SAMPLE_RATE = 3
 DISPUTED_ORDER_STATUSES = (
@@ -127,10 +129,29 @@ class Command(BaseCommand):
                 for request, provider in request_provider_pairs[:n_offers]
             ]
 
+            accepted_offers = []
+            accepted_request_ids = set()
+            for offer in offers:
+                if offer.request_id in accepted_request_ids:
+                    continue
+                service_request = offer.request
+                service_request.status = Request.RequestStatus.PUBLISHED
+                service_request.published_at = timezone.now()
+                service_request.save(
+                    update_fields=["status", "published_at", "updated_at"],
+                )
+                accepted_offers.append(
+                    accept_offer(offer.pk, service_request.customer),
+                )
+                accepted_request_ids.add(offer.request_id)
+
+            order_statuses = Order.OrderStatus.values
             orders = [
-                OrderFactory.create(offer=offer)
-                for offer in offers
-                if offer.status == Offer.OfferStatus.ACCEPTED
+                OrderFactory.create(
+                    offer=offer,
+                    status=order_statuses[index % len(order_statuses)],
+                )
+                for index, offer in enumerate(accepted_offers)
             ]
 
             for index in range(n_messages):

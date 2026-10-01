@@ -5,11 +5,9 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
+from sabil_book.exceptions import InvalidTransitionError
+
 from .models import Request
-
-
-class InvalidTransitionError(ValueError):
-    """Raised when a request cannot move to the desired state."""
 
 
 @dataclass(frozen=True)

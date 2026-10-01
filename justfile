@@ -33,6 +33,10 @@ prune *args:
 logs *args:
     @docker compose logs -f {{args}}
 
+# ps: View container state
+ps:
+    @docker compose ps
+
 # manage: Executes `manage.py` command.
 manage +args:
     @docker compose run --rm django python ./manage.py {{args}}
@@ -40,3 +44,7 @@ manage +args:
 # pytest: Run tests with pytest.
 pytest *args:
     @docker compose run --rm django pytest {{args}}
+
+#lint: Run linting check.
+lint:
+    .venv/bin/pre-commit run --all-files

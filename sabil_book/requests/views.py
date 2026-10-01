@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from rest_framework import mixins
-from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.permissions import IsAdminUser
@@ -11,6 +10,8 @@ from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.viewsets import ReadOnlyModelViewSet
+
+from sabil_book.api import transition_error
 
 from .models import Request
 from .serializers import BrowseRequestSerializer
@@ -23,10 +24,6 @@ from .services import submit_request
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
-
-
-def transition_error(exc: InvalidTransitionError) -> Response:
-    return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
 
 
 class RequestViewSet(ModelViewSet):

@@ -5,3 +5,10 @@ POSTGRES_PORT=5432
 POSTGRES_DB=sabil_book
 POSTGRES_USER=kHDDYWIDwJXSMxTaMMhkYWFqTNcFKxoM
 POSTGRES_PASSWORD=y866m4wwihg3xY3qURXBLCjXstJ6FOkTtjqMRAYHyCvYebivwPTKJjXKH1p0pIAO
+# Postgres 18+ images default PGDATA to /var/lib/postgresql/<major>/docker
+# (relative to wherever /var/lib/postgresql is mounted) rather than the legacy
+# flat /var/lib/postgresql/data. This compose file's volume is mounted at
+# /var/lib/postgresql/data, so the actual cluster the image creates on first
+# run lives at /var/lib/postgresql/data/18/docker — that's where PGDATA must
+# point for the container to find its own data on restart, not the mount root.
+PGDATA=/var/lib/postgresql/data/18/docker
