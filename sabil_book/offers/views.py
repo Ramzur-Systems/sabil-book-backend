@@ -1,34 +1,31 @@
+from __future__ import annotations
 
 from django.db import IntegrityError
 from django.db import transaction
+from django.shortcuts import get_object_or_404
 from rest_framework import mixins
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.exceptions import ValidationError
+from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
-from rest_framework.generics import ListAPIView
 
 from sabil_book.api import transition_error
 from sabil_book.exceptions import InvalidTransitionError
 from sabil_book.requests.models import Request
 from sabil_book.users.models import ProviderProfile
 
-from .serializers import OfferRequestQuerySerializer
-from .serializers import OfferSerializer
-from .services import accept_offer
-
-from __future__ import annotations
-
-from django.shortcuts import get_object_or_404
-
 from .models import Message
 from .models import Offer
 from .pagination import MessageCursorPagination
 from .permissions import is_offer_participant
 from .serializers import MessageSerializer
+from .serializers import OfferRequestQuerySerializer
+from .serializers import OfferSerializer
+from .services import accept_offer
 
 
 class MessageListView(ListAPIView):

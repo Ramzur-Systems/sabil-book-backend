@@ -1,26 +1,22 @@
 from __future__ import annotations
 
-from http import HTTPStatus
-
-import pytest
-from django.urls import reverse
-from rest_framework.test import APIClient
-
-from sabil_book.offers.tests.factories import MessageFactory
-from sabil_book.offers.tests.factories import OfferFactory
-from sabil_book.requests.tests.factories import RequestFactory
-
 from decimal import Decimal
 from http import HTTPStatus
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
 from django.db import IntegrityError
+from django.urls import reverse
 from rest_framework.exceptions import ValidationError
+from rest_framework.test import APIClient
 
 from sabil_book.offers.models import Offer
+from sabil_book.offers.tests.factories import MessageFactory
+from sabil_book.offers.tests.factories import OfferFactory
 from sabil_book.offers.views import OfferViewSet
 from sabil_book.requests.models import Request
+from sabil_book.requests.tests.factories import RequestFactory
 from sabil_book.users.models import ProviderProfile
 from sabil_book.users.tests.factories import ProviderProfileFactory
 from sabil_book.users.tests.factories import UserFactory
@@ -73,6 +69,9 @@ def test_stranger_gets_not_found_instead_of_forbidden(api_client):
 
     api_client.force_authenticate(UserFactory.create())
     response = api_client.get(reverse("api:offer-messages", args=[offer.id]))
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
 def test_verified_provider_can_create_offer_for_published_request(api_client):
     price = Decimal("150.00")
     delivery_days = 5
@@ -322,6 +321,8 @@ def test_anonymous_user_cannot_list_message_history(api_client):
     response = api_client.get(reverse("api:offer-messages", args=[offer.id]))
 
     assert response.status_code == HTTPStatus.FORBIDDEN
+
+
 def test_customer_cannot_accept_an_offer_twice(api_client):
     service_request = RequestFactory(status=Request.RequestStatus.PUBLISHED)
     offer = OfferFactory(request=service_request)
