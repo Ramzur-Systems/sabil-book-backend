@@ -1,0 +1,3 @@
+The customer requested a revision for “{{ request_title }}”.
+
+Open order #{{ order_id }} to review the requested changes and deadline.

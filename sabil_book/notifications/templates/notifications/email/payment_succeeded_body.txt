@@ -1,0 +1,3 @@
+Payment #{{ payment_id }} for {{ amount }} {{ currency }} succeeded.
+
+Order #{{ order_id }} for “{{ request_title }}” is now funded.

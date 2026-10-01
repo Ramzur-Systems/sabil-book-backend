@@ -72,6 +72,16 @@ cd sabil_book
 uv run celery -A config.celery_app worker -B -l info
 ```
 
+### Notifications
+
+Deal lifecycle notifications are queued through Celery after the surrounding database
+transaction commits. Local Docker uses MailHog as its SMTP server; open
+<http://localhost:8025> to inspect outgoing messages.
+
+The authenticated preference endpoint is `GET/PATCH /api/notification-settings/me/`.
+Set `receive_non_critical` to `false` to suppress activity updates while retaining
+money and deadline notifications.
+
 ## Deployment
 
 The following details how to deploy this application.

@@ -1,0 +1,5 @@
+A dispute was opened for “{{ request_title }}”.
+
+Reason: {{ reason }}
+
+Open dispute #{{ dispute_id }} to respond before the deadline.

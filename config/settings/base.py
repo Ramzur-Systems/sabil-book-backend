@@ -107,6 +107,7 @@ LOCAL_APPS = [
     "sabil_book.offers",
     "sabil_book.reviews",
     "sabil_book.payments",
+    "sabil_book.notifications.apps.NotificationsConfig",
     # Your stuff: custom apps go here
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
@@ -245,6 +246,11 @@ EMAIL_BACKEND = env(
     "DJANGO_EMAIL_BACKEND",
     default="django.core.mail.backends.smtp.EmailBackend",
 )
+EMAIL_HOST = env("DJANGO_EMAIL_HOST", default="localhost")
+EMAIL_PORT = env.int("DJANGO_EMAIL_PORT", default=25)
+EMAIL_HOST_USER = env("DJANGO_EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("DJANGO_EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("DJANGO_EMAIL_USE_TLS", default=False)
 # https://docs.djangoproject.com/en/dev/ref/settings/#email-timeout
 EMAIL_TIMEOUT = 5
 
