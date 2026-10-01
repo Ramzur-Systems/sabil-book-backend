@@ -9,20 +9,21 @@ from django.db import migrations
 
 def _update_or_create_site_with_sequence(site_model, connection, domain, name):
     """Update or create the site with default ID and keep the DB sequence in sync."""
-    site, created = site_model.objects.update_or_create(
+    _, created = site_model.objects.update_or_create(
         id=settings.SITE_ID,
         defaults={
             "domain": domain,
             "name": name,
         },
     )
-    if created:
+    if created and connection.vendor == "postgresql":
         # We provided the ID explicitly when creating the Site entry, therefore the DB
         # sequence to auto-generate them wasn't used and is now out of sync. If we
         # don't do anything, we'll get a unique constraint violation the next time a
         # site is created.
-        # To avoid this, we need to manually update DB sequence and make sure it's
-        # greater than the maximum value.
+        # To avoid this, we need to manually update PostgreSQL's sequence and make
+        # sure it's greater than the maximum value. Other supported backends keep
+        # their auto-increment value in sync when an explicit primary key is used.
         max_id = site_model.objects.order_by("-id").first().id
         with connection.cursor() as cursor:
             cursor.execute("SELECT last_value from django_site_id_seq")

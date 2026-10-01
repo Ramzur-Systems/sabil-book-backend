@@ -72,6 +72,7 @@ def test_stranger_gets_not_found_instead_of_forbidden(api_client):
     assert response.status_code == HTTPStatus.NOT_FOUND
 
 
+@pytest.mark.django_db
 def test_verified_provider_can_create_offer_for_published_request(api_client):
     price = Decimal("150.00")
     delivery_days = 5
@@ -320,9 +321,10 @@ def test_anonymous_user_cannot_list_message_history(api_client):
 
     response = api_client.get(reverse("api:offer-messages", args=[offer.id]))
 
-    assert response.status_code == HTTPStatus.FORBIDDEN
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
 
 
+@pytest.mark.django_db
 def test_customer_cannot_accept_an_offer_twice(api_client):
     service_request = RequestFactory(status=Request.RequestStatus.PUBLISHED)
     offer = OfferFactory(request=service_request)

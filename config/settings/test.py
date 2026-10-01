@@ -2,9 +2,34 @@
 With these settings, tests run faster.
 """
 
+import os
+from pathlib import Path
+from tempfile import gettempdir
+
+# ``base`` initializes PostgreSQL settings during import.  Supply placeholders
+# so this test-only configuration can replace that connection below.
+os.environ.setdefault("POSTGRES_DB", "test")
+os.environ.setdefault("POSTGRES_USER", "test")
+os.environ.setdefault("POSTGRES_PASSWORD", "test")
+
 from .base import *  # noqa: F403
 from .base import TEMPLATES
 from .base import env
+
+TEST_DATABASE_NAME = Path(gettempdir()) / "sabil-book-test.sqlite3"
+
+# Tests must not depend on the Docker Compose PostgreSQL service or its
+# environment variables. A separate SQLite database also prevents a local test
+# run from touching a developer's application database. It is file-backed so
+# database work performed by Channels' worker threads sees the same test data.
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": TEST_DATABASE_NAME,
+        "ATOMIC_REQUESTS": True,
+        "TEST": {"NAME": TEST_DATABASE_NAME},
+    },
+}
 
 # GENERAL
 # ------------------------------------------------------------------------------

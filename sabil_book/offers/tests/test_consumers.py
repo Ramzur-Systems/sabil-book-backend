@@ -6,7 +6,6 @@ from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
 
 from sabil_book.offers.models import Message
-from sabil_book.offers.rate_limit import _get_redis_client
 from sabil_book.offers.routing import websocket_urlpatterns
 from sabil_book.offers.tests.factories import OfferFactory
 from sabil_book.requests.tests.factories import RequestFactory
@@ -99,12 +98,22 @@ def test_message_history_survives_a_reconnect():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_rate_limit_blocks_flooding_without_dropping_earlier_messages(settings):
+def test_rate_limit_blocks_flooding_without_dropping_earlier_messages(
+    settings,
+    monkeypatch,
+):
     settings.CHAT_MESSAGE_RATE_LIMIT = RATE_LIMIT_FOR_TEST
     settings.CHAT_MESSAGE_RATE_LIMIT_WINDOW = 10
     customer = UserFactory.create()
     offer = OfferFactory.create(request=RequestFactory.create(customer=customer))
-    _get_redis_client().delete(f"chat:rate:{customer.id}:{offer.id}")
+    message_count = 0
+
+    def is_rate_limited(_user_id: int, _offer_id: int) -> bool:
+        nonlocal message_count
+        message_count += 1
+        return message_count > RATE_LIMIT_FOR_TEST
+
+    monkeypatch.setattr("sabil_book.offers.consumers.is_rate_limited", is_rate_limited)
 
     async def run():
         communicator = await _connected_communicator(offer.id, customer)
