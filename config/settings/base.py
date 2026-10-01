@@ -72,10 +72,16 @@ DATABASES["default"]["ATOMIC_REQUESTS"] = True
 ROOT_URLCONF = "config.urls"
 # https://docs.djangoproject.com/en/dev/ref/settings/#wsgi-application
 WSGI_APPLICATION = "config.wsgi.application"
+# https://channels.readthedocs.io/en/latest/topics/routing.html
+ASGI_APPLICATION = "config.asgi.application"
 
 # APPS
 # ------------------------------------------------------------------------------
 DJANGO_APPS = [
+    # Must be listed before django.contrib.staticfiles so it can take over the
+    # `runserver` command and serve ASGI (HTTP + WebSocket) instead of WSGI.
+    # https://channels.readthedocs.io/en/latest/installation.html
+    "daphne",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -94,6 +100,7 @@ THIRD_PARTY_APPS = [
     "allauth.mfa",
     "allauth.socialaccount",
     "django_celery_beat",
+    "channels",
     "rest_framework",
     "rest_framework.authtoken",
     "rest_framework_simplejwt.token_blacklist",
@@ -285,6 +292,34 @@ LOGGING = {
 
 REDIS_URL = env("REDIS_URL", default="redis://redis:6379/0")
 REDIS_SSL = REDIS_URL.startswith("rediss://")
+
+# Channels
+# ------------------------------------------------------------------------------
+# Channel layer: how WebSocket consumers in different ASGI processes talk to
+# each other (group_send). Backed by the same Redis instance as Celery here;
+# split it into its own Redis service/DB in production if load requires it.
+# Uses the pubsub backend, not the default `core.RedisChannelLayer`: the
+# default's BRPOP-based polling loop intermittently raises an unhandled
+# redis.exceptions.TimeoutError against current redis-py, killing open
+# WebSocket connections. channels_redis recommends the pubsub backend
+# anyway for broadcast-heavy workloads like a chat room's group_send.
+# https://github.com/django/channels_redis#pubsub-vs-default-layer
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.pubsub.RedisPubSubChannelLayer",
+        "CONFIG": {
+            "hosts": [REDIS_URL],
+        },
+    },
+}
+
+# Offer chat
+# ------------------------------------------------------------------------------
+# Basic anti-flood rate limit on the WebSocket chat: at most
+# CHAT_MESSAGE_RATE_LIMIT messages per CHAT_MESSAGE_RATE_LIMIT_WINDOW seconds,
+# per (user, offer). Enforced in sabil_book.offers.rate_limit.
+CHAT_MESSAGE_RATE_LIMIT = env.int("CHAT_MESSAGE_RATE_LIMIT", default=5)
+CHAT_MESSAGE_RATE_LIMIT_WINDOW = env.int("CHAT_MESSAGE_RATE_LIMIT_WINDOW", default=10)
 
 # Celery
 # ------------------------------------------------------------------------------
