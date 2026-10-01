@@ -1,4 +1,5 @@
 from .base import *  # noqa: F403
+from .base import CORS_ALLOWED_ORIGINS
 from .base import INSTALLED_APPS
 from .base import MIDDLEWARE
 from .base import env
@@ -13,7 +14,24 @@ SECRET_KEY = env(
     default="z6lvKjEAiCOx6zKO91gIfzgf0wivSQktDWPKQrkXkWvGvCHwcuZmiWE2M2Jh4eVE",
 )
 # https://docs.djangoproject.com/en/dev/ref/settings/#allowed-hosts
-ALLOWED_HOSTS = ["localhost", "0.0.0.0", "127.0.0.1"]  # noqa: S104
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0",  # noqa: S104
+    "nondepreciative-darcy-cowardly.ngrok-free.dev",
+    "0.0.0.5173",
+]
+
+# django-cors-headers
+# ------------------------------------------------------------------------------
+# The Vite dev server proxies /api to Django (see sabil-book-frontend's
+# vite.config.ts), so this only matters when the frontend is hit directly
+# (e.g. `vite preview`) instead of through that proxy.
+CORS_ALLOWED_ORIGINS = [
+    *CORS_ALLOWED_ORIGINS,
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
 
 # CACHES
 # ------------------------------------------------------------------------------
