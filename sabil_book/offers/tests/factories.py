@@ -17,7 +17,8 @@ class OfferFactory(DjangoModelFactory[Offer]):
     request = factory.SubFactory(RequestFactory)
     provider = factory.SubFactory(ProviderProfileFactory)
     price = fuzzy.FuzzyDecimal(10, 500, precision=2)
-    status = fuzzy.FuzzyChoice(Offer.OfferStatus.values)
+    delivery_days = fuzzy.FuzzyInteger(1, 30)
+    status = Offer.OfferStatus.PENDING
 
     class Meta:
         model = Offer

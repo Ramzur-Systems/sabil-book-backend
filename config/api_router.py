@@ -2,6 +2,7 @@ from django.conf import settings
 from rest_framework.routers import DefaultRouter
 from rest_framework.routers import SimpleRouter
 
+from sabil_book.offers.views import OfferViewSet
 from sabil_book.requests.views import BrowseRequestViewSet
 from sabil_book.requests.views import ModerationRequestViewSet
 from sabil_book.requests.views import RequestViewSet
@@ -19,7 +20,7 @@ router.register(
     ModerationRequestViewSet,
     basename="request-moderation",
 )
-
+router.register("offers", OfferViewSet, basename="offer")
 
 app_name = "api"
 urlpatterns = router.urls
