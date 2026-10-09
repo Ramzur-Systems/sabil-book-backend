@@ -6,4 +6,8 @@ set -o nounset
 
 
 python manage.py migrate
-exec python manage.py runserver_plus 0.0.0.0:8000
+# Plain `runserver`, not `runserver_plus`: with `daphne` installed, Channels
+# takes over this command to serve ASGI (HTTP + WebSocket) instead of WSGI.
+# runserver_plus replaces the command with its own WSGI-only dev server,
+# which would silently drop WebSocket support.
+exec python manage.py runserver 0.0.0.0:8000

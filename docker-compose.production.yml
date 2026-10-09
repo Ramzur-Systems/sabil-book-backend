@@ -40,6 +40,7 @@ services:
     image: sabil_book_production_traefik
     depends_on:
       - django
+      - websocket
     volumes:
       - production_traefik:/etc/traefik/acme
     ports:
@@ -68,3 +69,8 @@ services:
     <<: *django
     image: sabil_book_production_flower
     command: /start-flower
+
+  websocket:
+    <<: *django
+    image: sabil_book_production_websocket
+    command: /start-websocket
