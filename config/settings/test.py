@@ -73,6 +73,7 @@ CHANNEL_LAYERS = {
         "BACKEND": "channels.layers.InMemoryChannelLayer",
     },
 }
+CHAT_MESSAGE_RATE_LIMIT_ENABLED = False
 # KYC/AML provider webhook
 # ------------------------------------------------------------------------------
 KYC_WEBHOOK_SECRET = "test-kyc-webhook-secret"  # noqa: S105

@@ -23,6 +23,8 @@ from rest_framework_simplejwt.settings import api_settings as jwt_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
+from sabil_book.requests.models import Request
+from sabil_book.requests.serializers import RequestSerializer
 from sabil_book.users.models import ProviderProfile
 from sabil_book.users.models import User
 from sabil_book.users.serializers import KYCWebhookSerializer
@@ -142,6 +144,8 @@ class ProviderProfileViewSet(CreateModelMixin, RetrieveModelMixin, GenericViewSe
     def get_serializer_class(self):
         if self.action == "retrieve":
             return ProviderProfilePublicSerializer
+        if self.action == "direct_requests":
+            return RequestSerializer
         return ProviderProfileSerializer
 
     def get_permissions(self):
@@ -160,6 +164,28 @@ class ProviderProfileViewSet(CreateModelMixin, RetrieveModelMixin, GenericViewSe
 
     def _get_own_profile(self, request):
         return get_object_or_404(ProviderProfile, user=request.user)
+
+    @action(detail=True, methods=["post"], url_path="direct-requests")
+    def direct_requests(self, request, pk=None):
+        provider = self.get_object()
+        if provider.user_id == request.user.id:
+            raise ValidationError(
+                {"provider": "You cannot send a direct request to yourself."},
+            )
+        if provider.kyc_status != ProviderProfile.KYCStatus.APPROVED:
+            raise ValidationError(
+                {"provider": "The selected provider must have approved KYC."},
+            )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(
+            customer=request.user,
+            visibility=Request.RequestVisibility.DIRECT,
+            selected_provider=provider,
+            direct_status=Request.DirectRequestStatus.PENDING,
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["patch"], url_path="me")
     def me(self, request):

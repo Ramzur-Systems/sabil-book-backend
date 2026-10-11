@@ -14,14 +14,17 @@ def _get_redis_client() -> redis.Redis:
     return redis.Redis.from_url(settings.REDIS_URL)
 
 
-def is_rate_limited(user_id: int, offer_id: int) -> bool:
+def is_rate_limited(user_id: int, conversation_key: str) -> bool:
     """Fixed-window rate limit, backed by Redis so it holds across ASGI workers.
 
     INCR is atomic; EXPIRE with NX only arms the TTL the first time a window
     is opened, so later increments in the same window don't keep pushing the
     expiry back (which would let a steady drip of messages block forever).
     """
-    key = f"chat:rate:{user_id}:{offer_id}"
+    if not getattr(settings, "CHAT_MESSAGE_RATE_LIMIT_ENABLED", True):
+        return False
+
+    key = f"chat:rate:{user_id}:{conversation_key}"
     client = _get_redis_client()
     try:
         pipe = client.pipeline()

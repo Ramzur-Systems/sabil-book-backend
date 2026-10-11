@@ -2,6 +2,9 @@ from enum import StrEnum
 
 
 class NotificationEvent(StrEnum):
+    DIRECT_REQUEST_RECEIVED = "direct_request_received"
+    DIRECT_REQUEST_ACCEPTED = "direct_request_accepted"
+    DIRECT_REQUEST_DECLINED = "direct_request_declined"
     NEW_OFFER = "new_offer"
     OFFER_SELECTED = "offer_selected"
     PAYMENT_SUCCEEDED = "payment_succeeded"

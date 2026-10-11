@@ -1,0 +1,3 @@
+{{ provider_name }} declined your direct request “{{ request_title }}”.
+
+Open request #{{ request_id }} to edit and resend it, send it to another professional, or make it public.

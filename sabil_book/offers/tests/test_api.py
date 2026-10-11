@@ -73,6 +73,49 @@ def test_stranger_gets_not_found_instead_of_forbidden(api_client):
 
 
 @pytest.mark.django_db
+def test_direct_request_participants_and_staff_can_list_message_history(api_client):
+    provider = ProviderProfileFactory.create()
+    service_request = RequestFactory.create(
+        direct=True,
+        selected_provider=provider,
+        status=Request.RequestStatus.PUBLISHED,
+    )
+    message = MessageFactory.create(
+        offer=None,
+        request=service_request,
+        provider=provider,
+        sender=service_request.customer,
+    )
+    url = reverse("api:direct-request-messages", args=[service_request.pk])
+
+    for user in [service_request.customer, provider.user, UserFactory(is_staff=True)]:
+        api_client.force_authenticate(user)
+        response = api_client.get(url)
+        assert response.status_code == HTTPStatus.OK
+        assert [item["id"] for item in response.data["results"]] == [message.pk]
+
+
+@pytest.mark.django_db
+def test_other_provider_cannot_list_direct_request_messages(api_client):
+    service_request = RequestFactory.create(
+        direct=True,
+        status=Request.RequestStatus.PUBLISHED,
+    )
+    MessageFactory.create(
+        offer=None,
+        request=service_request,
+        provider=service_request.selected_provider,
+    )
+    api_client.force_authenticate(ProviderProfileFactory().user)
+
+    response = api_client.get(
+        reverse("api:direct-request-messages", args=[service_request.pk]),
+    )
+
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+@pytest.mark.django_db
 def test_verified_provider_can_create_offer_for_published_request(api_client):
     price = Decimal("150.00")
     delivery_days = 5
