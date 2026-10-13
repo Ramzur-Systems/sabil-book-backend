@@ -5,6 +5,7 @@ from rest_framework.routers import SimpleRouter
 
 from sabil_book.offers.views import MessageListView
 from sabil_book.offers.views import OfferViewSet
+from sabil_book.posts.views import PostViewSet
 from sabil_book.requests.views import BrowseRequestViewSet
 from sabil_book.requests.views import ModerationRequestViewSet
 from sabil_book.requests.views import RequestViewSet
@@ -23,6 +24,7 @@ router.register(
     basename="request-moderation",
 )
 router.register("offers", OfferViewSet, basename="offer")
+router.register("posts", PostViewSet, basename="post")
 
 app_name = "api"
 urlpatterns = [
