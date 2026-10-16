@@ -16,7 +16,7 @@ class Post(models.Model):
     updated_at = models.DateTimeField(_("updated at"), auto_now=True)
 
     class Meta:
-        ordering = ["-created_at"]
+        ordering = ["-created_at", "-pk"]
         indexes = [models.Index(fields=["author", "-created_at"])]
 
     def __str__(self) -> str:
