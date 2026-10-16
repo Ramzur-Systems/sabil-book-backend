@@ -1,0 +1,3 @@
+The result for “{{ request_title }}” has been delivered.
+
+Open order #{{ order_id }} to review it before the acceptance deadline.

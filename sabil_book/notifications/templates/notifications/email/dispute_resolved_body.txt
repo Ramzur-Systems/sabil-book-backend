@@ -1,0 +1,3 @@
+The dispute for “{{ request_title }}” has been resolved.
+
+Resolution: {{ resolution }}
