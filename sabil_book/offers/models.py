@@ -101,6 +101,15 @@ class Message(models.Model):
     )
     date_time = DateTimeField(auto_now_add=True)
 
+    class Meta:
+        ordering = ["date_time"]
+        indexes = [
+            models.Index(
+                fields=["offer", "date_time"],
+                name="offers_message_offer_idx",
+            ),
+        ]
+
     def __str__(self) -> str:
         return f"{self.sender}: {self.body[:30]}"
 

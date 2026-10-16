@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from django.db import IntegrityError
 from django.db import transaction
+from django.shortcuts import get_object_or_404
 from rest_framework import mixins
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.exceptions import ValidationError
+from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
@@ -16,10 +18,39 @@ from sabil_book.exceptions import InvalidTransitionError
 from sabil_book.requests.models import Request
 from sabil_book.users.models import ProviderProfile
 
+from .models import Message
 from .models import Offer
+from .pagination import MessageCursorPagination
+from .permissions import is_offer_participant
+from .serializers import MessageSerializer
 from .serializers import OfferRequestQuerySerializer
 from .serializers import OfferSerializer
 from .services import accept_offer
+
+
+class MessageListView(ListAPIView):
+    """Paginated chat history for an offer.
+
+    Lets a client that opens the chat mid-conversation (or reconnects after
+    a drop) fetch what it missed, instead of relying solely on the
+    WebSocket stream. Access is restricted to the same two participants
+    allowed into the WebSocket room — see
+    `sabil_book.offers.permissions.is_offer_participant`, shared with
+    `OfferChatConsumer` so the rule can't drift between the two entry points.
+    """
+
+    serializer_class = MessageSerializer
+    pagination_class = MessageCursorPagination
+
+    def get_queryset(self):
+        offer = get_object_or_404(
+            Offer.objects.select_related("request", "provider"),
+            pk=self.kwargs["offer_id"],
+        )
+        if not is_offer_participant(self.request.user, offer):
+            # 404, not 403: don't reveal that the offer exists to non-participants.
+            raise NotFound
+        return Message.objects.filter(offer=offer).select_related("sender")
 
 
 class OfferViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, GenericViewSet):

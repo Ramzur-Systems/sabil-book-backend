@@ -30,6 +30,18 @@ certificatesResolvers:
 
 http:
   routers:
+    # More specific than web-secure-router below (Host + PathPrefix vs. Host
+    # alone), so Traefik's default rule-length-based priority matches this
+    # one first for anything under /ws/ and routes it to the ASGI (daphne)
+    # service instead of gunicorn, which can't speak WebSocket.
+    websocket-secure-router:
+      rule: '(Host(`example.com`) || Host(`www.example.com`)) && PathPrefix(`/ws/`)'
+      entryPoints:
+        - web-secure
+      service: websocket
+      tls:
+        certResolver: letsencrypt
+
     web-secure-router:
       rule: 'Host(`example.com`) || Host(`www.example.com`)'
       entryPoints:
@@ -62,6 +74,11 @@ http:
       loadBalancer:
         servers:
           - url: http://django:5000
+
+    websocket:
+      loadBalancer:
+        servers:
+          - url: http://websocket:5001
 
     flower:
       loadBalancer:

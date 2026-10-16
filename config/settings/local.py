@@ -18,7 +18,7 @@ ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
     "0.0.0.0",  # noqa: S104
-    "nondepreciative-darcy-cowardly.ngrok-free.dev",
+    *env.list("NGROK_HOST", default=[]),
     "0.0.0.5173",
 ]
 
