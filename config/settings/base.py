@@ -112,6 +112,7 @@ LOCAL_APPS = [
     "sabil_book.users",
     "sabil_book.requests",
     "sabil_book.offers",
+    "sabil_book.posts",
     "sabil_book.reviews",
     "sabil_book.payments",
     # Your stuff: custom apps go here
