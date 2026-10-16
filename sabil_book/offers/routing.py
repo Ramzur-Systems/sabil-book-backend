@@ -7,4 +7,8 @@ websocket_urlpatterns = [
         "ws/offers/<int:offer_id>/chat/",
         consumers.OfferChatConsumer.as_asgi(),
     ),
+    path(
+        "ws/requests/<int:request_id>/chat/",
+        consumers.DirectRequestChatConsumer.as_asgi(),
+    ),
 ]

@@ -94,6 +94,37 @@ class TestMessage:
         user.delete()
         assert not Message.objects.filter(pk=message.pk).exists()
 
+    def test_direct_message_is_deleted_with_request(self, db):
+        request = RequestFactory.create(direct=True)
+        message = MessageFactory.create(
+            offer=None,
+            request=request,
+            provider=request.selected_provider,
+        )
+
+        request.delete()
+
+        assert not Message.objects.filter(pk=message.pk).exists()
+
+    def test_message_requires_exactly_one_conversation(self, db, user: User):
+        with pytest.raises(IntegrityError), transaction.atomic():
+            Message.objects.create(sender=user, body="No conversation")
+
+        with pytest.raises(IntegrityError), transaction.atomic():
+            Message.objects.create(
+                offer=OfferFactory.create(),
+                request=RequestFactory.create(direct=True),
+                sender=user,
+                body="Two conversations",
+            )
+
+        with pytest.raises(IntegrityError), transaction.atomic():
+            Message.objects.create(
+                request=RequestFactory.create(direct=True),
+                sender=user,
+                body="Direct message without a provider thread",
+            )
+
 
 class TestOrder:
     def test_defaults_to_funded_status(self, db):

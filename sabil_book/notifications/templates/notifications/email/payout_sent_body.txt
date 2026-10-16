@@ -1,0 +1,3 @@
+Your payout #{{ payout_id }} of {{ amount }} {{ currency }} was sent.
+
+This payout relates to order #{{ order_id }} for “{{ request_title }}”.

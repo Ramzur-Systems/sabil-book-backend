@@ -87,6 +87,27 @@ class Message(models.Model):
         on_delete=models.CASCADE,
         related_name="messages",
         verbose_name=_("offer"),
+        null=True,
+        blank=True,
+    )
+    request = models.ForeignKey(
+        "requests.Request",
+        on_delete=models.CASCADE,
+        related_name="messages",
+        verbose_name=_("request"),
+        null=True,
+        blank=True,
+    )
+    # The provider a direct-request conversation is held with. A declined
+    # request can be re-sent to another provider, and that provider must not
+    # see the earlier thread.
+    provider = models.ForeignKey(
+        ProviderProfile,
+        on_delete=models.CASCADE,
+        related_name="direct_request_messages",
+        verbose_name=_("provider"),
+        null=True,
+        blank=True,
     )
 
     sender = models.ForeignKey(
@@ -108,6 +129,23 @@ class Message(models.Model):
                 fields=["offer", "date_time"],
                 name="offers_message_offer_idx",
             ),
+            models.Index(
+                fields=["request", "provider", "date_time"],
+                name="offers_message_thread_idx",
+            ),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(offer__isnull=False, request__isnull=True, provider__isnull=True)
+                    | Q(
+                        offer__isnull=True,
+                        request__isnull=False,
+                        provider__isnull=False,
+                    )
+                ),
+                name="message_has_one_conversation",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -118,6 +156,7 @@ class Order(models.Model):
     class OrderStatus(models.TextChoices):
         FUNDED = "funded", _("Funded")
         SENT = "sent", _("Sent")  # provider marked the work delivered
+        REVISION_REQUESTED = "revision_requested", _("Revision requested")
         # reached either from SENT with no dispute, or from DISPUTE resolved
         # in the provider's favor (payout issued)
         CONFIRMED = "confirmed", _("Confirmed")

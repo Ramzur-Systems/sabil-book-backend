@@ -21,6 +21,7 @@ from sabil_book.users.models import ProviderProfile
 from .models import Message
 from .models import Offer
 from .pagination import MessageCursorPagination
+from .permissions import can_view_direct_request_messages
 from .permissions import is_offer_participant
 from .serializers import MessageSerializer
 from .serializers import OfferRequestQuerySerializer
@@ -51,6 +52,26 @@ class MessageListView(ListAPIView):
             # 404, not 403: don't reveal that the offer exists to non-participants.
             raise NotFound
         return Message.objects.filter(offer=offer).select_related("sender")
+
+
+class DirectRequestMessageListView(ListAPIView):
+    """Paginated history for a direct request's pre- and post-offer chat."""
+
+    serializer_class = MessageSerializer
+    pagination_class = MessageCursorPagination
+
+    def get_queryset(self):
+        service_request = get_object_or_404(
+            Request.objects.select_related("customer", "selected_provider__user"),
+            pk=self.kwargs["request_id"],
+            visibility=Request.RequestVisibility.DIRECT,
+        )
+        if not can_view_direct_request_messages(self.request.user, service_request):
+            raise NotFound
+        return Message.objects.filter(
+            request=service_request,
+            provider_id=service_request.selected_provider_id,
+        ).select_related("sender")
 
 
 class OfferViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, GenericViewSet):
@@ -96,6 +117,14 @@ class OfferViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, GenericViewSe
         if offer_request.status != Request.RequestStatus.PUBLISHED:
             msg = "A published request is required"
             raise ValidationError(msg)
+
+        if offer_request.visibility == Request.RequestVisibility.DIRECT and (
+            offer_request.selected_provider_id != provider.pk
+            or offer_request.direct_status != Request.DirectRequestStatus.ACCEPTED
+        ):
+            raise ValidationError(
+                {"request": "This direct request is not available for an offer."},
+            )
 
         duplicate_error = {
             "request": "You already have an active offer for this request.",

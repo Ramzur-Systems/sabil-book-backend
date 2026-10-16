@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import pytest
 from asgiref.sync import async_to_sync
+from channels.db import database_sync_to_async
 from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
 
 from sabil_book.offers.models import Message
 from sabil_book.offers.routing import websocket_urlpatterns
 from sabil_book.offers.tests.factories import OfferFactory
+from sabil_book.requests.models import Request
 from sabil_book.requests.tests.factories import RequestFactory
 from sabil_book.users.tests.factories import ProviderProfileFactory
 from sabil_book.users.tests.factories import UserFactory
@@ -21,8 +23,20 @@ def _chat_path(offer_id: int) -> str:
     return f"/ws/offers/{offer_id}/chat/"
 
 
+def _direct_chat_path(request_id: int) -> str:
+    return f"/ws/requests/{request_id}/chat/"
+
+
 async def _connected_communicator(offer_id: int, user):
     communicator = WebsocketCommunicator(application, _chat_path(offer_id))
+    communicator.scope["user"] = user
+    connected, _ = await communicator.connect()
+    assert connected
+    return communicator
+
+
+async def _connected_direct_communicator(request_id: int, user):
+    communicator = WebsocketCommunicator(application, _direct_chat_path(request_id))
     communicator.scope["user"] = user
     connected, _ = await communicator.connect()
     assert connected
@@ -71,6 +85,140 @@ def test_non_participant_is_rejected():
         assert not connected
 
     async_to_sync(run)()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_direct_request_participants_can_chat_before_an_offer_exists():
+    provider = ProviderProfileFactory.create()
+    service_request = RequestFactory.create(
+        direct=True,
+        selected_provider=provider,
+        status=Request.RequestStatus.PUBLISHED,
+    )
+
+    async def run():
+        customer_ws = await _connected_direct_communicator(
+            service_request.pk,
+            service_request.customer,
+        )
+        provider_ws = await _connected_direct_communicator(
+            service_request.pk,
+            provider.user,
+        )
+
+        await provider_ws.send_json_to({"body": "Could you clarify the scope?"})
+        provider_echo = await provider_ws.receive_json_from()
+        customer_received = await customer_ws.receive_json_from()
+
+        assert provider_echo["request"] == service_request.pk
+        assert provider_echo["offer"] is None
+        assert customer_received == provider_echo
+
+        await provider_ws.disconnect()
+        await customer_ws.disconnect()
+
+    async_to_sync(run)()
+
+    assert Message.objects.filter(
+        request=service_request,
+        offer__isnull=True,
+        body="Could you clarify the scope?",
+    ).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_direct_request_chat_rejects_other_providers_and_declined_requests():
+    service_request = RequestFactory.create(
+        direct=True,
+        status=Request.RequestStatus.PUBLISHED,
+    )
+    stranger = ProviderProfileFactory.create()
+
+    async def stranger_cannot_connect():
+        communicator = WebsocketCommunicator(
+            application,
+            _direct_chat_path(service_request.pk),
+        )
+        communicator.scope["user"] = stranger.user
+        connected, _ = await communicator.connect()
+        assert not connected
+
+    async_to_sync(stranger_cannot_connect)()
+
+    service_request.direct_status = Request.DirectRequestStatus.DECLINED
+    service_request.save(update_fields=["direct_status"])
+
+    async def selected_provider_cannot_connect_after_decline():
+        communicator = WebsocketCommunicator(
+            application,
+            _direct_chat_path(service_request.pk),
+        )
+        communicator.scope["user"] = service_request.selected_provider.user
+        connected, _ = await communicator.connect()
+        assert not connected
+
+    async_to_sync(selected_provider_cannot_connect_after_decline)()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_reassigned_direct_request_does_not_leak_into_previous_thread():
+    previous_provider = ProviderProfileFactory.create()
+    service_request = RequestFactory.create(
+        direct=True,
+        selected_provider=previous_provider,
+        status=Request.RequestStatus.PUBLISHED,
+    )
+    new_provider = ProviderProfileFactory.create()
+
+    async def run():
+        stale_customer_ws = await _connected_direct_communicator(
+            service_request.pk,
+            service_request.customer,
+        )
+        previous_provider_ws = await _connected_direct_communicator(
+            service_request.pk,
+            previous_provider.user,
+        )
+
+        await database_sync_to_async(
+            Request.objects.filter(pk=service_request.pk).update,
+        )(
+            selected_provider=new_provider,
+            direct_status=Request.DirectRequestStatus.PENDING,
+        )
+
+        await stale_customer_ws.send_json_to({"body": "Sent on the old thread"})
+        assert await stale_customer_ws.receive_json_from() == {"error": "forbidden"}
+
+        customer_ws = await _connected_direct_communicator(
+            service_request.pk,
+            service_request.customer,
+        )
+        new_provider_ws = await _connected_direct_communicator(
+            service_request.pk,
+            new_provider.user,
+        )
+        await customer_ws.send_json_to({"body": "Hello new provider"})
+        received = await new_provider_ws.receive_json_from()
+        assert received["body"] == "Hello new provider"
+        assert await previous_provider_ws.receive_nothing()
+
+        for communicator in [
+            stale_customer_ws,
+            previous_provider_ws,
+            customer_ws,
+            new_provider_ws,
+        ]:
+            await communicator.disconnect()
+
+    async_to_sync(run)()
+
+    assert list(
+        Message.objects.filter(request=service_request).values_list(
+            "provider_id",
+            "body",
+        ),
+    ) == [(new_provider.pk, "Hello new provider")]
 
 
 @pytest.mark.django_db(transaction=True)
