@@ -4,6 +4,7 @@ import itertools
 import random
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.core.management.base import CommandError
 from django.db import transaction
@@ -19,6 +20,53 @@ DISPUTED_ORDER_STATUSES = (
     Order.OrderStatus.UNRESOLVED,
     Order.OrderStatus.REVERTED,
 )
+
+
+ADMIN_EMAIL = "admin@example.com"
+ADMIN_PASSWORD = "admin12345"  # noqa: S105 - local DEBUG-only seed credential
+
+# Cycled over to give the admin a realistic moderation queue (mostly pending).
+MODERATION_STATUSES = (
+    Request.RequestStatus.MANUAL_REVIEW,
+    Request.RequestStatus.MANUAL_REVIEW,
+    Request.RequestStatus.MANUAL_REVIEW,
+    Request.RequestStatus.REJECTED,
+    Request.RequestStatus.DRAFT,
+)
+
+
+def _seed_moderation_requests(count, customers, request_factory):
+    blocklist = list(settings.REQUEST_MODERATION_BLOCKLIST)
+    created = []
+    for index in range(count):
+        status = MODERATION_STATUSES[index % len(MODERATION_STATUSES)]
+        flagged = status in {
+            Request.RequestStatus.MANUAL_REVIEW,
+            Request.RequestStatus.REJECTED,
+        }
+        created.append(
+            request_factory.create(
+                customer=customers[index % len(customers)],
+                status=status,
+                moderation_flags=[blocklist[index % len(blocklist)]] if flagged else [],
+                rejection_reason=(
+                    "Violates our content policy."
+                    if status == Request.RequestStatus.REJECTED
+                    else ""
+                ),
+            ),
+        )
+    return created
+
+
+def _ensure_admin():
+    user_model = get_user_model()
+    if not user_model.objects.filter(email=ADMIN_EMAIL).exists():
+        user_model.objects.create_superuser(
+            email=ADMIN_EMAIL,
+            password=ADMIN_PASSWORD,
+            name="Admin",
+        )
 
 
 def _validate_counts(n_customers, n_providers, n_requests, n_offers, n_messages):
@@ -71,6 +119,7 @@ class Command(BaseCommand):
         parser.add_argument("--requests", type=int, default=15)
         parser.add_argument("--offers", type=int, default=20)
         parser.add_argument("--messages", type=int, default=40)
+        parser.add_argument("--moderation-requests", type=int, default=10)
 
     def handle(self, *args, **options):
         if not settings.DEBUG:
@@ -168,6 +217,15 @@ class Command(BaseCommand):
                 PayoutFactory,
             )
 
+            if options["moderation_requests"] and requesters:
+                _seed_moderation_requests(
+                    options["moderation_requests"],
+                    requesters,
+                    RequestFactory,
+                )
+
+            _ensure_admin()
+
         self.stdout.write(
             self.style.SUCCESS(
                 f"Seeded {n_customers} customers, {n_providers} providers, "
@@ -175,6 +233,8 @@ class Command(BaseCommand):
                 f"{len(orders)} orders (from accepted offers), a payment per order, "
                 f"{len(confirmed_orders)} reviews and {len(payouts)} payouts for "
                 f"confirmed orders, and disputes on every {DISPUTE_SAMPLE_RATE}rd "
-                f"order in a dispute-related state.",
+                f"order in a dispute-related state, and "
+                f"{options['moderation_requests']} moderation-queue requests.",
             ),
         )
+        self.stdout.write(f"Admin login: {ADMIN_EMAIL} / {ADMIN_PASSWORD}")
