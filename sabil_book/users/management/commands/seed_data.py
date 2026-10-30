@@ -25,7 +25,6 @@ DISPUTED_ORDER_STATUSES = (
 
 
 ADMIN_EMAIL = "admin@example.com"
-ADMIN_PASSWORD_ENV = "SEED_ADMIN_PASSWORD"
 
 # Cycled over to give the admin a realistic moderation queue (mostly pending).
 MODERATION_STATUSES = (
@@ -66,7 +65,7 @@ def _ensure_admin() -> str | None:
     user_model = get_user_model()
     if user_model.objects.filter(email=ADMIN_EMAIL).exists():
         return None
-    password = os.environ.get(ADMIN_PASSWORD_ENV) or secrets.token_urlsafe(12)
+    password = os.environ.get("SEED_ADMIN_PASSWORD") or secrets.token_urlsafe(12)
     user_model.objects.create_superuser(
         email=ADMIN_EMAIL,
         password=password,
@@ -232,12 +231,23 @@ class Command(BaseCommand):
 
             admin_password = _ensure_admin()
 
+        self._report(
+            options,
+            n_orders=len(orders),
+            n_reviews=len(confirmed_orders),
+            n_payouts=len(payouts),
+            admin_password=admin_password,
+        )
+
+    def _report(self, options, *, n_orders, n_reviews, n_payouts, admin_password):
         self.stdout.write(
             self.style.SUCCESS(
-                f"Seeded {n_customers} customers, {n_providers} providers, "
-                f"{n_requests} requests, {n_offers} offers, {n_messages} messages, "
-                f"{len(orders)} orders (from accepted offers), a payment per order, "
-                f"{len(confirmed_orders)} reviews and {len(payouts)} payouts for "
+                f"Seeded {options['customers']} customers, "
+                f"{options['providers']} providers, "
+                f"{options['requests']} requests, {options['offers']} offers, "
+                f"{options['messages']} messages, "
+                f"{n_orders} orders (from accepted offers), a payment per order, "
+                f"{n_reviews} reviews and {n_payouts} payouts for "
                 f"confirmed orders, and disputes on every {DISPUTE_SAMPLE_RATE}rd "
                 f"order in a dispute-related state, and "
                 f"{options['moderation_requests']} moderation-queue requests.",
