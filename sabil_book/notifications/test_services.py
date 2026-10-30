@@ -111,3 +111,84 @@ def test_broker_failure_does_not_escape_to_business_code():
         side_effect=OSError("Redis unavailable"),
     ):
         NotificationService.enqueue_email(123)
+
+
+@pytest.mark.django_db
+def test_text_parts_are_not_html_escaped():
+    recipient = UserFactory.create()
+    delivery = NotificationDelivery.objects.create(
+        recipient=recipient,
+        event=NotificationEvent.NEW_OFFER,
+        context={
+            "request_title": "Tom & Jerry's <logo>",
+            "provider_name": "P",
+            "price": "1",
+            "request_id": 1,
+        },
+    )
+
+    send_notification_email.run(delivery.pk)
+
+    message = cast("EmailMultiAlternatives", mail.outbox[0])
+    assert "Tom & Jerry's <logo>" in message.subject
+    assert "Tom & Jerry's <logo>" in message.body
+    html = str(message.alternatives[0][0])
+    assert "Tom &amp; Jerry" in html
+    assert "&amp;amp;" not in html
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "status",
+    [
+        NotificationDelivery.DeliveryStatus.SENDING,
+        NotificationDelivery.DeliveryStatus.SENT,
+        NotificationDelivery.DeliveryStatus.FAILED,
+    ],
+)
+def test_task_does_not_send_a_delivery_that_is_not_claimable(status):
+    delivery = NotificationDelivery.objects.create(
+        recipient=UserFactory.create(),
+        event=NotificationEvent.PAYOUT_SENT,
+        context={"order_id": 1},
+        status=status,
+    )
+
+    send_notification_email.run(delivery.pk)
+
+    assert mail.outbox == []
+    delivery.refresh_from_db()
+    assert delivery.status == status
+    assert delivery.attempts == 0
+
+
+@pytest.mark.django_db
+def test_permanent_errors_fail_without_retrying():
+    delivery = NotificationDelivery.objects.create(
+        recipient=UserFactory.create(),
+        event=NotificationEvent.PAYOUT_SENT,
+        channel="sms",
+        context={"order_id": 1},
+    )
+
+    with patch.object(send_notification_email, "retry") as retry:
+        send_notification_email.run(delivery.pk)
+
+    retry.assert_not_called()
+    delivery.refresh_from_db()
+    assert delivery.status == NotificationDelivery.DeliveryStatus.FAILED
+    assert delivery.attempts == 1
+
+
+@pytest.mark.django_db
+def test_notification_errors_do_not_break_the_business_save():
+    from sabil_book.offers.tests.factories import OfferFactory  # noqa: PLC0415
+
+    with patch.object(
+        NotificationService,
+        "notify",
+        side_effect=RuntimeError("boom"),
+    ):
+        offer = OfferFactory.create()
+
+    assert offer.pk is not None
