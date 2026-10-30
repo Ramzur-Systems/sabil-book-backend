@@ -65,3 +65,23 @@ def test_saving_an_unrelated_field_does_not_repeat_a_status_notification():
     offer.save(update_fields=["price"])
 
     assert mail.outbox == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_creating_an_order_is_not_a_status_transition():
+    offer = OfferFactory.create(status=Offer.OfferStatus.ACCEPTED)
+    mail.outbox.clear()
+
+    OrderFactory.create(offer=offer, status=Order.OrderStatus.SENT)
+
+    assert mail.outbox == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_notifications_disabled_suppresses_signal_emails():
+    from .signals import notifications_disabled  # noqa: PLC0415
+
+    with notifications_disabled():
+        OfferFactory.create(status=Offer.OfferStatus.PENDING)
+
+    assert mail.outbox == []

@@ -5,7 +5,10 @@ from typing import Protocol
 
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
+from django.template import Context
+from django.template.loader import get_template
 from django.template.loader import render_to_string
+from django.utils import translation
 
 from .events import NotificationChannel
 
@@ -30,9 +33,30 @@ class NotificationChannelBackend(Protocol):
     ) -> None: ...
 
 
+def _render_plain_text(template_name: str, context: dict) -> str:
+    """Render a text template without HTML autoescaping.
+
+    Escaping is applied once, by the HTML template, so text parts show
+    ``Tom & Jerry`` rather than ``Tom &amp; Jerry``.
+    """
+    return get_template(template_name).template.render(
+        Context(context, autoescape=False),
+    )
+
+
 class EmailNotificationChannel:
     @staticmethod
     def send(
+        delivery: NotificationDelivery,
+        definition: NotificationDefinition,
+    ) -> None:
+        recipient = delivery.recipient
+        language = recipient.preferred_language or settings.LANGUAGE_CODE
+        with translation.override(language):
+            EmailNotificationChannel._send(delivery, definition)
+
+    @staticmethod
+    def _send(
         delivery: NotificationDelivery,
         definition: NotificationDefinition,
     ) -> None:
@@ -44,9 +68,9 @@ class EmailNotificationChannel:
             "event": definition.event.value,
         }
         subject = " ".join(
-            render_to_string(definition.subject_template, context).splitlines(),
+            _render_plain_text(definition.subject_template, context).splitlines(),
         ).strip()
-        body = render_to_string(definition.body_template, context).strip()
+        body = _render_plain_text(definition.body_template, context).strip()
         html_body = render_to_string(
             "notifications/email/base.html",
             {**context, "message": body},

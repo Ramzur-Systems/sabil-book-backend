@@ -8,6 +8,7 @@ from .serializers import NotificationPreferenceSerializer
 
 class NotificationPreferenceViewSet(GenericViewSet):
     serializer_class = NotificationPreferenceSerializer
+    queryset = NotificationPreference.objects.none()  # `me` only exposes own row
 
     @action(detail=False, methods=["get", "patch"])
     def me(self, request):
