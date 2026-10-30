@@ -1,23 +1,30 @@
 {% extends "admin/index.html" %}
+
 {% load i18n admin_stats %}
 
 {% block content %}
-{% admin_stats as stats %}
-<div class="sb-dashboard">
-  <a class="sb-card {% if stats.awaiting_review %}sb-alert{% else %}sb-ok{% endif %}"
-     href="{% url 'admin:requests_request_changelist' %}?status__exact=manual_review">
-    <span class="sb-num">{{ stats.awaiting_review }}</span>
-    <span class="sb-label">{% if stats.awaiting_review %}{% translate "Requests awaiting manual review" %}{% else %}{% translate "Moderation queue is empty" %}{% endif %}</span>
-  </a>
-  <a class="sb-card" href="{% url 'admin:requests_request_changelist' %}">
-    <span class="sb-num">{{ stats.requests }}</span><span class="sb-label">{% translate "Requests" %}</span>
-  </a>
-  <a class="sb-card" href="{% url 'admin:offers_offer_changelist' %}">
-    <span class="sb-num">{{ stats.offers }}</span><span class="sb-label">{% translate "Offers" %}</span>
-  </a>
-  <a class="sb-card" href="{% url 'admin:users_user_changelist' %}">
-    <span class="sb-num">{{ stats.users }}</span><span class="sb-label">{% translate "Users" %}</span>
-  </a>
-</div>
-{{ block.super }}
+  {% admin_stats as stats %}
+  <div class="sb-dashboard">
+    <a class="sb-card {% if stats.awaiting_review %}sb-alert{% else %}sb-ok{% endif %}"
+       href="{% url 'admin:requests_request_changelist' %}?status__exact=manual_review">
+      <span class="sb-num">{{ stats.awaiting_review }}</span>
+      <span class="sb-label">
+        {% if stats.awaiting_review %}
+          {% translate "Requests awaiting manual review" %}
+        {% else %}
+          {% translate "Moderation queue is empty" %}
+        {% endif %}
+      </span>
+    </a>
+    <a class="sb-card" href="{% url 'admin:requests_request_changelist' %}">
+      <span class="sb-num">{{ stats.requests }}</span><span class="sb-label">{% translate "Requests" %}</span>
+    </a>
+    <a class="sb-card" href="{% url 'admin:offers_offer_changelist' %}">
+      <span class="sb-num">{{ stats.offers }}</span><span class="sb-label">{% translate "Offers" %}</span>
+    </a>
+    <a class="sb-card" href="{% url 'admin:users_user_changelist' %}">
+      <span class="sb-num">{{ stats.users }}</span><span class="sb-label">{% translate "Users" %}</span>
+    </a>
+  </div>
+  {{ block.super }}
 {% endblock %}
