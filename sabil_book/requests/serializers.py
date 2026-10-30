@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers
 
 from sabil_book.users.models import ProviderProfile
@@ -40,6 +41,21 @@ class RequestSerializer(serializers.ModelSerializer[Request]):
             "published_at",
             "closed_at",
         ]
+
+    def validate_deadline(self, value):
+        if value is not None and value < timezone.localdate():
+            msg = "The deadline cannot be in the past."
+            raise serializers.ValidationError(msg)
+        return value
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        user = getattr(self.context.get("request"), "user", None)
+        if user is not None and not user.is_staff and instance.customer_id != user.id:
+            # Moderation details are for the customer and admins only.
+            for field in ("moderation_flags", "rejection_reason"):
+                data.pop(field, None)
+        return data
 
     def validate(self, attrs):
         instance = self.instance

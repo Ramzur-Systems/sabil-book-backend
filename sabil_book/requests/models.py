@@ -73,6 +73,12 @@ class Request(models.Model):
         null=True,
         blank=True,
     )
+    declined_providers = models.ManyToManyField(
+        "users.ProviderProfile",
+        related_name="declined_direct_requests",
+        verbose_name=_("declined providers"),
+        blank=True,
+    )
     direct_status = models.CharField(  # noqa: DJ001
         _("direct request status"),
         max_length=16,

@@ -107,7 +107,7 @@ def test_client_cannot_target_self_or_unapproved_provider(
 
 
 @pytest.mark.django_db
-def test_submitted_direct_request_is_visible_only_to_participants_and_staff(
+def test_submitted_direct_request_is_visible_only_to_participants(
     api_client,
     request_payload,
 ):
@@ -159,10 +159,11 @@ def test_submitted_direct_request_is_visible_only_to_participants_and_staff(
     assert api_client.get(reverse("api:request-list")).data == []
     assert api_client.get(reverse("api:browse-list")).data == []
 
+    # Staff review requests through the moderation endpoints, not this one.
     api_client.force_authenticate(admin)
     assert (
         api_client.get(reverse("api:request-detail", args=[request_id])).status_code
-        == HTTPStatus.OK
+        == HTTPStatus.NOT_FOUND
     )
 
 
@@ -552,7 +553,7 @@ def test_editing_declined_request_returns_it_to_draft_for_resubmission(api_clien
 
     assert edit_response.status_code == HTTPStatus.OK
     assert edit_response.data["status"] == Request.RequestStatus.DRAFT
-    assert edit_response.data["direct_status"] == Request.DirectRequestStatus.PENDING
+    assert edit_response.data["direct_status"] == Request.DirectRequestStatus.DECLINED
     assert edit_response.data["published_at"] is None
 
     submit_response = api_client.post(
@@ -591,3 +592,84 @@ def test_reassigned_provider_does_not_see_previous_conversation(api_client):
     assert api_client.get(url).data["results"] == []
     api_client.force_authenticate(previous_provider.user)
     assert api_client.get(url).status_code == HTTPStatus.NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_edited_declined_request_can_still_be_reassigned(api_client):
+    service_request = declined_direct_request()
+    new_provider = ProviderProfileFactory(
+        kyc_status=ProviderProfile.KYCStatus.APPROVED,
+    )
+    api_client.force_authenticate(service_request.customer)
+    api_client.patch(
+        reverse("api:request-detail", args=[service_request.pk]),
+        {"description": "A clearer scope for the research brief."},
+    )
+
+    response = api_client.post(
+        reverse("api:request-reassign", args=[service_request.pk]),
+        {"provider": new_provider.pk},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.data["status"] == Request.RequestStatus.PUBLISHED
+    assert response.data["direct_status"] == Request.DirectRequestStatus.PENDING
+
+
+@pytest.mark.django_db
+def test_cannot_reassign_back_to_a_provider_who_declined(api_client):
+    service_request = declined_direct_request()
+    first_provider = service_request.selected_provider
+    first_provider.kyc_status = ProviderProfile.KYCStatus.APPROVED
+    first_provider.save(update_fields=["kyc_status"])
+    # The factory builds the declined state directly, so record the history.
+    service_request.declined_providers.add(first_provider)
+    second_provider = ProviderProfileFactory(
+        kyc_status=ProviderProfile.KYCStatus.APPROVED,
+    )
+    api_client.force_authenticate(service_request.customer)
+    api_client.post(
+        reverse("api:request-reassign", args=[service_request.pk]),
+        {"provider": second_provider.pk},
+    )
+    api_client.force_authenticate(second_provider.user)
+    api_client.post(reverse("api:request-decline", args=[service_request.pk]))
+    api_client.force_authenticate(service_request.customer)
+
+    response = api_client.post(
+        reverse("api:request-reassign", args=[service_request.pk]),
+        {"provider": first_provider.pk},
+    )
+
+    assert response.status_code == HTTPStatus.CONFLICT
+
+
+@pytest.mark.django_db
+def test_selected_provider_does_not_see_moderation_details(api_client):
+    service_request = declined_direct_request()
+    service_request.moderation_flags = ["flagged"]
+    service_request.save(update_fields=["moderation_flags"])
+    service_request.direct_status = Request.DirectRequestStatus.PENDING
+    service_request.save(update_fields=["direct_status"])
+    api_client.force_authenticate(service_request.selected_provider.user)
+
+    response = api_client.get(
+        reverse("api:request-detail", args=[service_request.pk]),
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert "moderation_flags" not in response.data
+    assert "rejection_reason" not in response.data
+
+
+@pytest.mark.django_db
+def test_past_deadline_is_rejected(api_client, request_payload):
+    customer = UserFactory()
+    api_client.force_authenticate(customer)
+
+    response = api_client.post(
+        reverse("api:request-list"),
+        {**request_payload, "deadline": "2000-01-01"},
+    )
+
+    assert response.status_code == HTTPStatus.BAD_REQUEST

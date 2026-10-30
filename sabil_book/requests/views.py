@@ -39,8 +39,6 @@ class RequestViewSet(ModelViewSet):
 
     def get_queryset(self) -> QuerySet[Request]:
         user = self.request.user
-        if user.is_staff and self.action != "list":
-            return self.queryset.all()
         return self.queryset.filter(
             Q(customer=user)
             | Q(
@@ -74,7 +72,6 @@ class RequestViewSet(ModelViewSet):
             # (and moderation) before the provider is asked again.
             serializer.save(
                 status=Request.RequestStatus.DRAFT,
-                direct_status=Request.DirectRequestStatus.PENDING,
                 published_at=None,
             )
             return

@@ -82,6 +82,28 @@ def _validate_direct_request_target(request: Request) -> None:
         raise InvalidTransitionError(msg)
 
 
+_MODERATION_FIELDS = [
+    "status",
+    "rejection_reason",
+    "moderation_flags",
+    "published_at",
+    "updated_at",
+]
+
+
+def _apply_moderation(request: Request) -> None:
+    """Publish the request, or hold it for manual review if content is flagged."""
+    request.rejection_reason = ""
+    result = check_content(request)
+    request.moderation_flags = result.matched_terms
+    if result.requires_manual_review:
+        request.status = Request.RequestStatus.MANUAL_REVIEW
+        request.published_at = None
+    else:
+        request.status = Request.RequestStatus.PUBLISHED
+        request.published_at = timezone.now()
+
+
 @transaction.atomic
 def submit_request(request_id: int) -> Request:
     request = (
@@ -98,24 +120,13 @@ def submit_request(request_id: int) -> Request:
 
     _validate_direct_request_target(request)
 
-    request.rejection_reason = ""
-    result = check_content(request)
-    request.moderation_flags = result.matched_terms
-    if result.requires_manual_review:
-        request.status = Request.RequestStatus.MANUAL_REVIEW
-        request.published_at = None
-    else:
-        request.status = Request.RequestStatus.PUBLISHED
-        request.published_at = timezone.now()
-    request.save(
-        update_fields=[
-            "status",
-            "rejection_reason",
-            "moderation_flags",
-            "published_at",
-            "updated_at",
-        ],
-    )
+    update_fields = list(_MODERATION_FIELDS)
+    if request.direct_status == Request.DirectRequestStatus.DECLINED:
+        # An edited, previously declined request is being sent again.
+        request.direct_status = Request.DirectRequestStatus.PENDING
+        update_fields.append("direct_status")
+    _apply_moderation(request)
+    request.save(update_fields=update_fields)
     if request.status == Request.RequestStatus.PUBLISHED:
         _notify_direct_request_submitted(request)
     return request
@@ -186,6 +197,8 @@ def respond_to_direct_request(
         else Request.DirectRequestStatus.DECLINED
     )
     request.save(update_fields=["direct_status", "updated_at"])
+    if not accept:
+        request.declined_providers.add(request.selected_provider)
     NotificationService.notify(
         event=(
             NotificationEvent.DIRECT_REQUEST_ACCEPTED
@@ -208,8 +221,10 @@ def _get_declined_direct_request_for_update(request_id: int, customer) -> Reques
             visibility=Request.RequestVisibility.DIRECT,
         )
     )
+    # A declined request that was edited is back in DRAFT but stays DECLINED.
     if (
-        request.status != Request.RequestStatus.PUBLISHED
+        request.status
+        not in {Request.RequestStatus.PUBLISHED, Request.RequestStatus.DRAFT}
         or request.direct_status != Request.DirectRequestStatus.DECLINED
     ):
         msg = "Only a declined direct request can be redirected or made public."
@@ -224,15 +239,23 @@ def reassign_direct_request(
     provider: ProviderProfile,
 ) -> Request:
     request = _get_declined_direct_request_for_update(request_id, customer)
-    if provider.pk == request.selected_provider_id:
+    if (
+        provider.pk == request.selected_provider_id
+        or request.declined_providers.filter(pk=provider.pk).exists()
+    ):
         msg = "This provider has already declined the request."
         raise InvalidTransitionError(msg)
 
     request.selected_provider = provider
     request.direct_status = Request.DirectRequestStatus.PENDING
     _validate_direct_request_target(request)
-    request.save(update_fields=["selected_provider", "direct_status", "updated_at"])
-    _notify_direct_request_submitted(request)
+    # The content may have been edited since it was last moderated.
+    _apply_moderation(request)
+    request.save(
+        update_fields=["selected_provider", "direct_status", *_MODERATION_FIELDS],
+    )
+    if request.status == Request.RequestStatus.PUBLISHED:
+        _notify_direct_request_submitted(request)
     return request
 
 
@@ -242,12 +265,14 @@ def convert_direct_request_to_public(request_id: int, customer) -> Request:
     request.visibility = Request.RequestVisibility.PUBLIC
     request.selected_provider = None
     request.direct_status = None
+    # Public requests reach every provider, so re-check the content.
+    _apply_moderation(request)
     request.save(
         update_fields=[
             "visibility",
             "selected_provider",
             "direct_status",
-            "updated_at",
+            *_MODERATION_FIELDS,
         ],
     )
     return request
