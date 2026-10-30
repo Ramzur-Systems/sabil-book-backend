@@ -48,3 +48,7 @@ pytest *args:
 #lint: Run linting check.
 lint:
     .venv/bin/pre-commit run --all-files
+
+# seed: Fill the local database with fake data (and an admin user, DEBUG only).
+seed *args:
+    @docker compose run --rm django python ./manage.py seed_data {{args}}
