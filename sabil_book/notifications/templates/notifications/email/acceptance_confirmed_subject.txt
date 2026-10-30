@@ -1,0 +1,1 @@
+Result accepted for order #{{ order_id }}

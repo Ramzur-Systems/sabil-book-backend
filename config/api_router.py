@@ -3,6 +3,7 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 from rest_framework.routers import SimpleRouter
 
+from sabil_book.notifications.views import NotificationPreferenceViewSet
 from sabil_book.offers.views import MessageListView
 from sabil_book.offers.views import OfferViewSet
 from sabil_book.posts.views import PostViewSet
@@ -16,6 +17,11 @@ router = DefaultRouter() if settings.DEBUG else SimpleRouter()
 
 router.register("users", UserViewSet)
 router.register("providers", ProviderProfileViewSet, basename="provider")
+router.register(
+    "notification-settings",
+    NotificationPreferenceViewSet,
+    basename="notification-settings",
+)
 router.register("requests", RequestViewSet, basename="request")
 router.register("browse/requests", BrowseRequestViewSet, basename="browse")
 router.register(

@@ -7,6 +7,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.viewsets import ModelViewSet
 
 from sabil_book.users.models import ProviderProfile
@@ -26,6 +27,12 @@ class PostPagination(PageNumberPagination):
     max_page_size = 100
 
 
+class PostAnonRateThrottle(AnonRateThrottle):
+    """Limit unauthenticated scraping of the public post feed."""
+
+    scope = "posts_anon"
+
+
 class PostFilterSerializer(serializers.Serializer):
     provider = serializers.IntegerField(required=False, min_value=1)
 
@@ -36,6 +43,7 @@ class PostViewSet(ModelViewSet):
     serializer_class = PostSerializer
     pagination_class = PostPagination
     queryset = Post.objects.prefetch_related("images")
+    throttle_classes = [PostAnonRateThrottle]
 
     def get_permissions(self):
         if self.action in {"list", "retrieve"}:

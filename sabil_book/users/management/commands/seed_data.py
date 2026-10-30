@@ -12,6 +12,7 @@ from django.core.management.base import CommandError
 from django.db import transaction
 from django.utils import timezone
 
+from sabil_book.notifications.signals import notifications_disabled
 from sabil_book.offers.models import Order
 from sabil_book.offers.services import accept_offer
 from sabil_book.requests.models import Request
@@ -153,7 +154,7 @@ class Command(BaseCommand):
         n_messages = options["messages"]
         _validate_counts(n_customers, n_providers, n_requests, n_offers, n_messages)
 
-        with transaction.atomic():
+        with transaction.atomic(), notifications_disabled():
             customers = UserFactory.create_batch(n_customers)
             provider_users = UserFactory.create_batch(n_providers)
             providers = [
