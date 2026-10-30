@@ -1,6 +1,7 @@
 from http import HTTPStatus
 
 import pytest
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework.test import APIClient
 
@@ -9,6 +10,7 @@ from sabil_book.notifications.models import NotificationDelivery
 from sabil_book.offers.models import Offer
 from sabil_book.offers.tests.factories import MessageFactory
 from sabil_book.requests.models import Request
+from sabil_book.requests.services import moderate_request
 from sabil_book.requests.tests.factories import RequestFactory
 from sabil_book.users.models import ProviderProfile
 from sabil_book.users.tests.factories import ProviderProfileFactory
@@ -560,12 +562,59 @@ def test_editing_declined_request_returns_it_to_draft_for_resubmission(api_clien
         reverse("api:request-submit", args=[service_request.pk]),
     )
 
-    assert submit_response.status_code == HTTPStatus.OK
-    assert submit_response.data["status"] == Request.RequestStatus.PUBLISHED
-    assert NotificationDelivery.objects.filter(
+    assert submit_response.status_code == HTTPStatus.CONFLICT
+    assert not NotificationDelivery.objects.filter(
         recipient=provider.user,
         event=NotificationEvent.DIRECT_REQUEST_RECEIVED,
     ).exists()
+
+
+@pytest.mark.django_db
+def test_empty_patch_does_not_reset_declined_request(api_client):
+    service_request = declined_direct_request()
+    api_client.force_authenticate(service_request.customer)
+
+    response = api_client.patch(
+        reverse("api:request-detail", args=[service_request.pk]),
+        {},
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.data["status"] == Request.RequestStatus.PUBLISHED
+
+
+@pytest.mark.django_db
+def test_rejected_reassignment_can_be_edited_and_resubmitted(api_client):
+    service_request = declined_direct_request()
+    new_provider = ProviderProfileFactory(
+        kyc_status=ProviderProfile.KYCStatus.APPROVED,
+    )
+    service_request.description = "contains flaggedterm"
+    service_request.save(update_fields=["description"])
+    api_client.force_authenticate(service_request.customer)
+
+    with override_settings(REQUEST_MODERATION_BLOCKLIST=["flaggedterm"]):
+        reassign = api_client.post(
+            reverse("api:request-reassign", args=[service_request.pk]),
+            {"provider": new_provider.pk},
+        )
+        assert reassign.data["status"] == Request.RequestStatus.MANUAL_REVIEW
+        assert not NotificationDelivery.objects.filter(
+            recipient=new_provider.user,
+        ).exists()
+
+        moderate_request(service_request.pk, approve=False, reason="Not allowed")
+        api_client.patch(
+            reverse("api:request-detail", args=[service_request.pk]),
+            {"description": "clean description"},
+        )
+        resubmit = api_client.post(
+            reverse("api:request-submit", args=[service_request.pk]),
+        )
+
+    assert resubmit.status_code == HTTPStatus.OK
+    assert resubmit.data["status"] == Request.RequestStatus.PUBLISHED
+    assert resubmit.data["selected_provider"] == new_provider.pk
 
 
 @pytest.mark.django_db

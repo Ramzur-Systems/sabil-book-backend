@@ -118,15 +118,17 @@ def submit_request(request_id: int) -> Request:
         msg = "Only a draft or rejected request can be submitted."
         raise InvalidTransitionError(msg)
 
+    if request.direct_status == Request.DirectRequestStatus.DECLINED:
+        # Same rule as reassigning: a provider who declined is not asked again.
+        msg = (
+            "The provider declined this request. "
+            "Send it to another one or make it public."
+        )
+        raise InvalidTransitionError(msg)
     _validate_direct_request_target(request)
 
-    update_fields = list(_MODERATION_FIELDS)
-    if request.direct_status == Request.DirectRequestStatus.DECLINED:
-        # An edited, previously declined request is being sent again.
-        request.direct_status = Request.DirectRequestStatus.PENDING
-        update_fields.append("direct_status")
     _apply_moderation(request)
-    request.save(update_fields=update_fields)
+    request.save(update_fields=_MODERATION_FIELDS)
     if request.status == Request.RequestStatus.PUBLISHED:
         _notify_direct_request_submitted(request)
     return request

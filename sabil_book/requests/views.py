@@ -67,9 +67,13 @@ class RequestViewSet(ModelViewSet):
     def perform_update(self, serializer: RequestSerializer) -> None:
         instance = serializer.instance
         self._ensure_customer(instance)
-        if instance.is_declined_direct_request:
-            # Editing after a decline sends the request back through submission
-            # (and moderation) before the provider is asked again.
+        changed = any(
+            getattr(instance, field) != value
+            for field, value in serializer.validated_data.items()
+        )
+        if instance.is_declined_direct_request and changed:
+            # A real edit after a decline takes the request off the provider's
+            # list until it is moderated again by reassigning or going public.
             serializer.save(
                 status=Request.RequestStatus.DRAFT,
                 published_at=None,
