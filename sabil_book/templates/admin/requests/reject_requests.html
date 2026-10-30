@@ -1,0 +1,31 @@
+{% extends "admin/base_site.html" %}
+
+{% load i18n %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% translate "Home" %}</a>
+    › <a href="{% url 'admin:requests_request_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+    › {{ title }}
+  </div>
+{% endblock %}
+{% block content %}
+  <form method="post">
+    {% csrf_token %}
+    <p>{% blocktranslate count counter=queryset.count %}Reject {{ counter }} request? Only requests awaiting manual review will be rejected.{% plural %}Reject {{ counter }} requests? Only requests awaiting manual review will be rejected.{% endblocktranslate %}</p>
+    <ul>
+      {% for obj in queryset %}
+        <li>#{{ obj.pk }} {{ obj.title }} — {{ obj.customer }}</li>
+      {% endfor %}
+    </ul>
+    {% for obj in queryset %}
+      <input type="hidden" name="{{ action_checkbox_name }}" value="{{ obj.pk }}" />
+    {% endfor %}
+    <input type="hidden" name="action" value="reject_requests" />
+    <input type="hidden" name="apply" value="1" />
+    {{ form.as_p }}
+    <input type="submit" class="default" value="{% translate 'Reject' %}" />
+    <a href="{% url 'admin:requests_request_changelist' %}"
+       class="button cancel-link">{% translate "Cancel" %}</a>
+  </form>
+{% endblock %}

@@ -12,6 +12,8 @@ class PostImageFormSet(BaseInlineFormSet):
     def save_new(self, form, commit=True):  # noqa: FBT002
         obj = super().save_new(form, commit=False)
         if not hasattr(self, "_next_position"):
+            # Lock the parent row so concurrent edits can't pick the same slot.
+            Post.objects.select_for_update().filter(pk=self.instance.pk).first()
             last = PostImage.objects.filter(post=self.instance).aggregate(
                 last=Max("position"),
             )["last"]
