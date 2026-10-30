@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib import admin
 from django.contrib import messages
+from django.core.exceptions import ObjectDoesNotExist
 from django.template.response import TemplateResponse
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import ngettext
@@ -68,30 +69,40 @@ class RequestAdmin(admin.ModelAdmin):
                     % {"pk": pk},
                     messages.WARNING,
                 )
+            except ObjectDoesNotExist:
+                self.message_user(
+                    request,
+                    _("Request #%(pk)s no longer exists; skipped.") % {"pk": pk},
+                    messages.WARNING,
+                )
             else:
                 done += 1
         if done:
-            verb = (
-                ngettext("approved", "approved", done)
-                if approve
-                else ngettext("rejected", "rejected", done)
-            )
-            self.message_user(
-                request,
-                ngettext(
-                    "%(count)d request %(verb)s.",
-                    "%(count)d requests %(verb)s.",
+            if approve:
+                message = ngettext(
+                    "%(count)d request approved.",
+                    "%(count)d requests approved.",
                     done,
                 )
-                % {"count": done, "verb": verb},
-                messages.SUCCESS,
-            )
+            else:
+                message = ngettext(
+                    "%(count)d request rejected.",
+                    "%(count)d requests rejected.",
+                    done,
+                )
+            self.message_user(request, message % {"count": done}, messages.SUCCESS)
 
-    @admin.action(description=_("Approve selected requests (publish)"))
+    @admin.action(
+        description=_("Approve selected requests (publish)"),
+        permissions=["change"],
+    )
     def approve_requests(self, request, queryset):
         self._moderate(request, queryset, approve=True)
 
-    @admin.action(description=_("Reject selected requests"))
+    @admin.action(
+        description=_("Reject selected requests"),
+        permissions=["change"],
+    )
     def reject_requests(self, request, queryset):
         if "apply" in request.POST:
             form = RejectionForm(request.POST)

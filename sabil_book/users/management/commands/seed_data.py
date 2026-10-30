@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import itertools
+import os
 import random
+import secrets
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -23,7 +25,7 @@ DISPUTED_ORDER_STATUSES = (
 
 
 ADMIN_EMAIL = "admin@example.com"
-ADMIN_PASSWORD = "admin12345"  # noqa: S105 - local DEBUG-only seed credential
+ADMIN_PASSWORD_ENV = "SEED_ADMIN_PASSWORD"
 
 # Cycled over to give the admin a realistic moderation queue (mostly pending).
 MODERATION_STATUSES = (
@@ -36,7 +38,7 @@ MODERATION_STATUSES = (
 
 
 def _seed_moderation_requests(count, customers, request_factory):
-    blocklist = list(settings.REQUEST_MODERATION_BLOCKLIST)
+    blocklist = list(settings.REQUEST_MODERATION_BLOCKLIST) or ["flagged"]
     created = []
     for index in range(count):
         status = MODERATION_STATUSES[index % len(MODERATION_STATUSES)]
@@ -59,14 +61,18 @@ def _seed_moderation_requests(count, customers, request_factory):
     return created
 
 
-def _ensure_admin():
+def _ensure_admin() -> str | None:
+    """Create the admin if missing; return the password only when created."""
     user_model = get_user_model()
-    if not user_model.objects.filter(email=ADMIN_EMAIL).exists():
-        user_model.objects.create_superuser(
-            email=ADMIN_EMAIL,
-            password=ADMIN_PASSWORD,
-            name="Admin",
-        )
+    if user_model.objects.filter(email=ADMIN_EMAIL).exists():
+        return None
+    password = os.environ.get(ADMIN_PASSWORD_ENV) or secrets.token_urlsafe(12)
+    user_model.objects.create_superuser(
+        email=ADMIN_EMAIL,
+        password=password,
+        name="Admin",
+    )
+    return password
 
 
 def _validate_counts(n_customers, n_providers, n_requests, n_offers, n_messages):
@@ -224,7 +230,7 @@ class Command(BaseCommand):
                     RequestFactory,
                 )
 
-            _ensure_admin()
+            admin_password = _ensure_admin()
 
         self.stdout.write(
             self.style.SUCCESS(
@@ -237,4 +243,7 @@ class Command(BaseCommand):
                 f"{options['moderation_requests']} moderation-queue requests.",
             ),
         )
-        self.stdout.write(f"Admin login: {ADMIN_EMAIL} / {ADMIN_PASSWORD}")
+        if admin_password:
+            self.stdout.write(f"Admin login: {ADMIN_EMAIL} / {admin_password}")
+        else:
+            self.stdout.write(f"Admin {ADMIN_EMAIL} already exists; unchanged.")
