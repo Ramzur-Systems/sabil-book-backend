@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework.routers import SimpleRouter
 
 from sabil_book.notifications.views import NotificationPreferenceViewSet
+from sabil_book.offers.views import DirectRequestMessageListView
 from sabil_book.offers.views import MessageListView
 from sabil_book.offers.views import OfferViewSet
 from sabil_book.posts.views import PostViewSet
@@ -39,5 +40,10 @@ urlpatterns = [
         "offers/<int:offer_id>/messages/",
         MessageListView.as_view(),
         name="offer-messages",
+    ),
+    path(
+        "requests/<int:request_id>/messages/",
+        DirectRequestMessageListView.as_view(),
+        name="direct-request-messages",
     ),
 ]

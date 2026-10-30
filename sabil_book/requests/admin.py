@@ -24,6 +24,16 @@ class RejectionForm(forms.Form):
 @admin.register(Request)
 class RequestAdmin(admin.ModelAdmin):
     list_display = [
+        "title",
+        "customer",
+        "category",
+        "visibility",
+        "selected_provider",
+        "direct_status",
+        "budget",
+        "status",
+    ]
+    readonly_fields = [
         "id",
         "title",
         "customer",
@@ -33,7 +43,7 @@ class RequestAdmin(admin.ModelAdmin):
         "moderation_flags",
         "created_at",
     ]
-    list_filter = ["status", "category", "created_at"]
+    list_filter = ["status", "visibility", "direct_status", "category", "created_at"]
     list_select_related = ["customer"]
     search_fields = ["title", "description", "customer__email", "customer__name"]
     date_hierarchy = "created_at"
@@ -62,11 +72,11 @@ class RequestAdmin(admin.ModelAdmin):
         for pk in queryset.values_list("pk", flat=True):
             try:
                 moderate_request(pk, approve=approve, reason=reason)
-            except InvalidTransitionError:
+            except InvalidTransitionError as exc:
                 self.message_user(
                     request,
-                    _("Request #%(pk)s is not awaiting manual review; skipped.")
-                    % {"pk": pk},
+                    _("Request #%(pk)s skipped: %(reason)s")
+                    % {"pk": pk, "reason": exc},
                     messages.WARNING,
                 )
             except ObjectDoesNotExist:

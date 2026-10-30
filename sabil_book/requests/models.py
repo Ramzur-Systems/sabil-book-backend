@@ -27,6 +27,15 @@ class Request(models.Model):
         REJECTED = "rejected", _("Rejected")
         CLOSED = "closed", _("Closed")
 
+    class RequestVisibility(models.TextChoices):
+        PUBLIC = "public", _("Public")
+        DIRECT = "direct", _("Direct")
+
+    class DirectRequestStatus(models.TextChoices):
+        PENDING = "pending", _("Pending")
+        ACCEPTED = "accepted", _("Accepted")
+        DECLINED = "declined", _("Declined")
+
     customer = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -48,6 +57,35 @@ class Request(models.Model):
         blank=True,
         validators=[MinValueValidator(0)],
     )
+    deadline = models.DateField(_("deadline"), null=True, blank=True)
+    visibility = models.CharField(
+        _("request visibility"),
+        max_length=16,
+        choices=RequestVisibility.choices,
+        default=RequestVisibility.PUBLIC,
+        db_index=True,
+    )
+    selected_provider = models.ForeignKey(
+        "users.ProviderProfile",
+        on_delete=models.PROTECT,
+        related_name="direct_requests",
+        verbose_name=_("selected provider"),
+        null=True,
+        blank=True,
+    )
+    declined_providers = models.ManyToManyField(
+        "users.ProviderProfile",
+        related_name="declined_direct_requests",
+        verbose_name=_("declined providers"),
+        blank=True,
+    )
+    direct_status = models.CharField(  # noqa: DJ001
+        _("direct request status"),
+        max_length=16,
+        choices=DirectRequestStatus.choices,
+        null=True,
+        blank=True,
+    )
     status = models.CharField(
         _("Request Status"),
         max_length=32,
@@ -68,7 +106,30 @@ class Request(models.Model):
                 condition=models.Q(budget__gte=0) | models.Q(budget__isnull=True),
                 name="request_budget_non_negative",
             ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        visibility="public",
+                        selected_provider__isnull=True,
+                        direct_status__isnull=True,
+                    )
+                    | models.Q(
+                        visibility="direct",
+                        selected_provider__isnull=False,
+                        direct_status__isnull=False,
+                    )
+                ),
+                name="request_direct_fields_valid",
+            ),
         ]
 
     def __str__(self) -> str:
         return f"{self.customer} - {self.get_category_display()}"
+
+    @property
+    def is_declined_direct_request(self) -> bool:
+        return (
+            self.visibility == self.RequestVisibility.DIRECT
+            and self.status == self.RequestStatus.PUBLISHED
+            and self.direct_status == self.DirectRequestStatus.DECLINED
+        )

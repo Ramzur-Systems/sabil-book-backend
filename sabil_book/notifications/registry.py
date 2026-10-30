@@ -23,6 +23,18 @@ class NotificationDefinition:
 
 
 NOTIFICATION_DEFINITIONS = {
+    NotificationEvent.DIRECT_REQUEST_RECEIVED: NotificationDefinition(
+        event=NotificationEvent.DIRECT_REQUEST_RECEIVED,
+        category=NotificationCategory.ACTIVITY,
+    ),
+    NotificationEvent.DIRECT_REQUEST_ACCEPTED: NotificationDefinition(
+        event=NotificationEvent.DIRECT_REQUEST_ACCEPTED,
+        category=NotificationCategory.ACTIVITY,
+    ),
+    NotificationEvent.DIRECT_REQUEST_DECLINED: NotificationDefinition(
+        event=NotificationEvent.DIRECT_REQUEST_DECLINED,
+        category=NotificationCategory.ACTIVITY,
+    ),
     NotificationEvent.NEW_OFFER: NotificationDefinition(
         event=NotificationEvent.NEW_OFFER,
         category=NotificationCategory.ACTIVITY,
