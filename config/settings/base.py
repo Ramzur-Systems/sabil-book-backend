@@ -7,6 +7,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent.parent.parent
 # sabil_book/
@@ -30,7 +31,8 @@ TIME_ZONE = "UTC"
 # https://docs.djangoproject.com/en/dev/ref/settings/#language-code
 LANGUAGE_CODE = "en-us"
 # https://docs.djangoproject.com/en/dev/ref/settings/#languages
-# from django.utils.translation import gettext_lazy as _
+# from django.core.exceptions import ImproperlyConfigured
+
 # LANGUAGES = [
 #     ('en', _('English')),
 #     ('fr-fr', _('French')),
@@ -463,4 +465,32 @@ CELERY_BEAT_SCHEDULE = {
         "task": "sabil_book.payments.tasks.recover_order_payments",
         "schedule": 60.0,
     },
+}
+
+
+# Attachments use a separate private bucket, including in local development.
+ATTACHMENT_S3_BUCKET = env("ATTACHMENT_S3_BUCKET", default="sabil-book-results")
+ATTACHMENT_S3_ENDPOINT_URL = env("ATTACHMENT_S3_ENDPOINT_URL", default=None)
+ATTACHMENT_S3_REGION = env("ATTACHMENT_S3_REGION", default="us-east-1")
+ATTACHMENT_S3_ACCESS_KEY = env("ATTACHMENT_S3_ACCESS_KEY", default=None)
+ATTACHMENT_S3_SECRET_KEY = env("ATTACHMENT_S3_SECRET_KEY", default=None)
+ATTACHMENT_DOWNLOAD_TTL_SECONDS = env.int("ATTACHMENT_DOWNLOAD_TTL_SECONDS", default=300)
+ATTACHMENT_DOWNLOAD_MAX_TTL_SECONDS = 3600
+if not 1 <= ATTACHMENT_DOWNLOAD_TTL_SECONDS <= ATTACHMENT_DOWNLOAD_MAX_TTL_SECONDS:
+    msg = "ATTACHMENT_DOWNLOAD_TTL_SECONDS must be between 1 and 3600."
+    raise ImproperlyConfigured(msg)
+ORDER_RESULT_ALLOWED_EXTENSIONS = env.list(
+    "ORDER_RESULT_ALLOWED_EXTENSIONS", default=["pdf", "txt", "png", "jpg", "jpeg"],
+)
+CLAMAV_HOST = env("CLAMAV_HOST", default="clamav")
+CLAMAV_PORT = env.int("CLAMAV_PORT", default=3310)
+CLAMAV_TIMEOUT_SECONDS = env.int("CLAMAV_TIMEOUT_SECONDS", default=30)
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    "attachments": {"BACKEND": "sabil_book.offers.storage.PrivateAttachmentStorage"},
+}
+CELERY_BEAT_SCHEDULE["recover-attachment-scans"] = {
+    "task": "sabil_book.offers.tasks.recover_attachment_scans",
+    "schedule": 60.0,
 }

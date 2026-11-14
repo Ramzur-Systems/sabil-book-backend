@@ -1,9 +1,16 @@
 volumes:
+  clamav_data: {}
   sabil_book_local_postgres_data: {}
   sabil_book_local_postgres_data_backups: {}
   sabil_book_local_redis_data: {}
 
 services:
+  clamav:
+    image: clamav/clamav:1.4
+    volumes:
+      - clamav_data:/var/lib/clamav
+    # clamd has no authentication: keep port 3310 inside the Compose network.
+
   django: &django
     build:
       context: .
@@ -56,6 +63,7 @@ services:
     image: sabil_book_local_celeryworker
     container_name: sabil_book_local_celeryworker
     depends_on:
+      - clamav
       - redis
       - postgres
       - mailhog

@@ -18,6 +18,7 @@ from sabil_book.offers.order_services import request_correction
 from sabil_book.offers.order_services import resolve_dispute
 from sabil_book.offers.order_services import upload_result
 from sabil_book.offers.tasks import process_order_reviews
+from sabil_book.offers.tasks import scan_attachment
 from sabil_book.offers.tests.factories import OrderFactory
 from sabil_book.payments.models import Payment
 from sabil_book.payments.models import Payout
@@ -76,7 +77,11 @@ def result_file():
 
 
 def deliver(order):
-    return upload_result(order.pk, order.offer.provider.user, result_file())
+    result = upload_result(order.pk, order.offer.provider.user, result_file())
+    with patch("sabil_book.offers.antivirus.scan_stream", return_value="clean"):
+        scan_attachment(result.attachments.latest("pk").pk)
+    result.refresh_from_db()
+    return result
 
 
 def test_upload_stores_file_hash_and_deadline(order, settings):
@@ -414,7 +419,9 @@ def test_financial_tasks_call_adapter_without_faking_success(order):
         deliver(order)
         open_dispute(order.pk, order.offer.request.customer, "Wrong result")
         resolve_dispute(
-            order.pk, in_provider_favour=False, resolution="Refund approved",
+            order.pk,
+            in_provider_favour=False,
+            resolution="Refund approved",
         )
         refund_order.apply(args=[order.pk]).get()
         backend.refund_payment.assert_called_once()
@@ -425,10 +432,13 @@ def test_financial_tasks_call_adapter_without_faking_success(order):
 
 
 def test_failed_file_storage_does_not_advance_order(order):
-    with patch(
-        "django.core.files.storage.FileSystemStorage.save",
-        side_effect=OSError("Storage offline"),
-    ), pytest.raises(OSError, match="Storage offline"):
+    with (
+        patch(
+            "django.core.files.storage.FileSystemStorage.save",
+            side_effect=OSError("Storage offline"),
+        ),
+        pytest.raises(OSError, match="Storage offline"),
+    ):
         deliver(order)
     order.refresh_from_db()
     assert order.status == S.FUNDED

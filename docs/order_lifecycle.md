@@ -32,7 +32,7 @@ retrieve the order; unrelated users receive 404.
 | `GET /api/orders/` | Participant | Their orders |
 | `GET /api/orders/{id}/` | Participant | Status, dates, results, correction reason |
 | `POST /api/orders/{id}/pay/` | Customer | 202: payment ID, status, amount, currency, provider |
-| `POST /api/orders/{id}/attachments/` | Provider | Multipart `file`; stores Attachment and SHA-256, returns `delivered` |
+| `POST /api/orders/{id}/attachments/` | Provider | Multipart `file`; stores private Attachment and SHA-256, queues antivirus scan |
 | `POST /api/orders/{id}/accept/` | Customer | No payload; moves to `completed` |
 | `POST /api/orders/{id}/request-correction/` | Customer | `{"reason": "..."}`; moves to `correction_requested` |
 | `POST /api/orders/{id}/dispute/` | Customer | `{"reason": "..."}`; creates Dispute, moves to `disputed` |
@@ -40,7 +40,9 @@ retrieve the order; unrelated users receive 404.
 Upload is permitted only from `funded` or `correction_requested`. Correction
 reasons are limited to 2,000 characters; dispute reasons to 255. Files default
 to a maximum of 25 MiB (`ORDER_RESULT_MAX_BYTES`). Each upload keeps prior
-attachments and starts a fresh review period.
+attachments; a clean antivirus scan publishes the result and starts a fresh
+review period. See [private attachments](attachments.md) for download access,
+S3 and ClamAV configuration.
 
 ## Timer
 

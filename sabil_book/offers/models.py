@@ -12,6 +12,9 @@ from django.utils.translation import gettext_lazy as _
 
 from sabil_book.users.models import ProviderProfile
 
+from .storage import attachment_storage
+from .storage import attachment_upload_to
+
 
 class Offer(models.Model):
     class OfferStatus(models.TextChoices):
@@ -199,13 +202,32 @@ class Order(models.Model):
 
 
 class Attachment(models.Model):
+    class ScanStatus(models.TextChoices):
+        PENDING = "pending", _("Pending scan")
+        CLEAN = "clean", _("Clean")
+        INFECTED = "infected", _("Infected")
+        ERROR = "error", _("Scan failed")
+
+    av_scan_status = models.CharField(
+        max_length=16,
+        choices=ScanStatus.choices,
+        default=ScanStatus.PENDING,
+        db_index=True,
+    )
+    av_scanned_at = DateTimeField(null=True, blank=True)
+    av_scan_error = models.TextField(blank=True)
+
     order = models.ForeignKey(
         Order,
         on_delete=models.CASCADE,
         related_name="attachments",
         verbose_name=_("order"),
     )
-    file = models.FileField(upload_to="orders/results/%Y/%m/%d/", blank=True)
+    file = models.FileField(
+        upload_to=attachment_upload_to,
+        storage=attachment_storage,
+        blank=True,
+    )
     created_at = DateTimeField(default=timezone.now, editable=False)
     file_hash = CharField(
         _("Attached file hash"),

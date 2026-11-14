@@ -1,0 +1,1 @@
+Result attachment rejected for order #{{ order_id }}

@@ -1,6 +1,5 @@
 """Order state machine. All business transitions acquire the same row lock."""
 
-from datetime import timedelta
 from functools import partial
 from hashlib import sha256
 
@@ -12,6 +11,7 @@ from rest_framework.exceptions import PermissionDenied
 from sabil_book.exceptions import InvalidTransitionError
 from sabil_book.reviews.models import Dispute
 
+from .antivirus import validate_result_file
 from .models import Attachment
 from .models import Order
 
@@ -54,11 +54,19 @@ def _complete(order):
 
 @transaction.atomic
 def upload_result(order_id, user, uploaded_file):
+    from .tasks import scan_attachment  # noqa: PLC0415
+
     order = locked_order(order_id)
     if order.offer.provider.user_id != user.pk:
         msg = "Only the provider may upload results."
         raise PermissionDenied(msg)
+    original_status = order.status
     order.transition_to(S.DELIVERED)
+    order.status = original_status
+    if order.attachments.filter(av_scan_status=Attachment.ScanStatus.PENDING).exists():
+        msg = "A result is already awaiting antivirus scanning."
+        raise InvalidTransitionError(msg)
+    validate_result_file(uploaded_file)
     if not order.funded_at:
         msg = "Payment must be confirmed before delivery."
         raise InvalidTransitionError(msg)
@@ -75,16 +83,8 @@ def upload_result(order_id, user, uploaded_file):
         attachment.file.save(uploaded_file.name, uploaded_file, save=False)
         attachment.storage_key = attachment.file.name
         attachment.save()
-        order.delivered_at = timezone.now()
-        order.review_deadline = order.delivered_at + timedelta(seconds=period)
-        order.correction_reason = ""
-        order.save(
-            update_fields=[
-                "status",
-                "delivered_at",
-                "review_deadline",
-                "correction_reason",
-            ],
+        transaction.on_commit(
+            partial(scan_attachment.delay, attachment.pk), robust=True,
         )
     except Exception:
         if attachment.file.name:
@@ -94,6 +94,11 @@ def upload_result(order_id, user, uploaded_file):
 
 
 def _review(order):
+    if order.attachments.exists() and not order.attachments.filter(
+        av_scan_status=Attachment.ScanStatus.CLEAN,
+    ).exists():
+        msg = "No result has passed antivirus scanning."
+        raise InvalidTransitionError(msg)
     if order.status == S.DELIVERED:
         order.transition_to(S.UNDER_REVIEW)
         order.save(update_fields=["status"])
@@ -174,6 +179,10 @@ def resolve_dispute(order_id, *, in_provider_favour, resolution):
 @transaction.atomic
 def process_review_timer(order_id):
     order = locked_order(order_id)
+    if order.attachments.exists() and not order.attachments.filter(
+        av_scan_status=Attachment.ScanStatus.CLEAN,
+    ).exists():
+        return False
     if order.status not in {S.DELIVERED, S.UNDER_REVIEW}:
         return False
     if order.status == S.DELIVERED:

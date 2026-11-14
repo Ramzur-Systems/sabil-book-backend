@@ -1,8 +1,8 @@
-from django.conf import settings
 from rest_framework import serializers
 
 from sabil_book.payments.models import Payment
 
+from .antivirus import validate_result_file
 from .models import Attachment
 from .models import Order
 
@@ -10,7 +10,7 @@ from .models import Order
 class AttachmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attachment
-        fields = ["id", "file", "file_hash", "created_at"]
+        fields = ["id", "file_hash", "av_scan_status", "av_scanned_at", "created_at"]
         read_only_fields = fields
 
 
@@ -37,10 +37,7 @@ class ResultUploadSerializer(serializers.Serializer):
     file = serializers.FileField()
 
     def validate_file(self, value):
-        if value.size > settings.ORDER_RESULT_MAX_BYTES:
-            msg = "The result file is too large."
-            raise serializers.ValidationError(msg)
-        return value
+        return validate_result_file(value)
 
 
 class CorrectionSerializer(serializers.Serializer):

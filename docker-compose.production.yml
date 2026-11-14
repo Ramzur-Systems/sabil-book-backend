@@ -1,4 +1,5 @@
 volumes:
+  clamav_data: {}
   production_postgres_data: {}
   production_postgres_data_backups: {}
   production_traefik: {}
@@ -8,6 +9,12 @@ volumes:
 
 
 services:
+  clamav:
+    image: clamav/clamav:1.4
+    volumes:
+      - clamav_data:/var/lib/clamav
+    # clamd has no authentication: keep port 3310 inside the Compose network.
+
   django: &django
     build:
       context: .
@@ -58,6 +65,10 @@ services:
   celeryworker:
     <<: *django
     image: sabil_book_production_celeryworker
+    depends_on:
+      - postgres
+      - redis
+      - clamav
     command: /start-celeryworker
 
   celerybeat:
