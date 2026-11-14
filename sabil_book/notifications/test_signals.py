@@ -30,15 +30,15 @@ def test_domain_lifecycle_triggers_all_notification_emails():
     payment.save(update_fields=["status"])
     expected_subjects.add(f"Payment succeeded for order #{order.pk}")
 
-    order.status = Order.OrderStatus.SENT
+    order.status = Order.OrderStatus.DELIVERED
     order.save(update_fields=["status"])
     expected_subjects.add(f"Result delivered for order #{order.pk}")
 
-    order.status = Order.OrderStatus.CONFIRMED
+    order.status = Order.OrderStatus.COMPLETED
     order.save(update_fields=["status"])
     expected_subjects.add(f"Result accepted for order #{order.pk}")
 
-    order.status = Order.OrderStatus.REVISION_REQUESTED
+    order.status = Order.OrderStatus.CORRECTION_REQUESTED
     order.save(update_fields=["status"])
     expected_subjects.add(f"Revision requested for order #{order.pk}")
 
@@ -72,7 +72,7 @@ def test_creating_an_order_is_not_a_status_transition():
     offer = OfferFactory.create(status=Offer.OfferStatus.ACCEPTED)
     mail.outbox.clear()
 
-    OrderFactory.create(offer=offer, status=Order.OrderStatus.SENT)
+    OrderFactory.create(offer=offer, status=Order.OrderStatus.DELIVERED)
 
     assert mail.outbox == []
 

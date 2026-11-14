@@ -190,15 +190,15 @@ def notify_payment_events(sender, instance: Payment, **kwargs) -> None:
 # Order status -> (event, who is told). The recipient is resolved lazily so the
 # offer, request and user rows are only loaded for statuses that notify.
 _ORDER_EVENTS: dict[str, tuple[NotificationEvent, Callable[[Order], object]]] = {
-    Order.OrderStatus.SENT: (
+    Order.OrderStatus.DELIVERED: (
         NotificationEvent.RESULT_DELIVERED,
         lambda order: order.offer.request.customer,
     ),
-    Order.OrderStatus.CONFIRMED: (
+    Order.OrderStatus.COMPLETED: (
         NotificationEvent.ACCEPTANCE_CONFIRMED,
         lambda order: order.offer.provider.user,
     ),
-    Order.OrderStatus.REVISION_REQUESTED: (
+    Order.OrderStatus.CORRECTION_REQUESTED: (
         NotificationEvent.REVISION_REQUESTED,
         lambda order: order.offer.provider.user,
     ),

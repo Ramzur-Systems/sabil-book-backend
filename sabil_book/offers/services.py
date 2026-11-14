@@ -5,6 +5,7 @@ from sabil_book.exceptions import InvalidTransitionError
 from sabil_book.requests.models import Request
 
 from .models import Offer
+from .models import Order
 
 
 @transaction.atomic
@@ -41,4 +42,7 @@ def accept_offer(offer_id: int, customer) -> Offer:
         update_fields=["status", "closed_at", "updated_at"],
     )
 
+    Order.objects.get_or_create(
+        offer=offer, defaults={"status": Order.OrderStatus.AWAITING_PAYMENT},
+    )
     return offer

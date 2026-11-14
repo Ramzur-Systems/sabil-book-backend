@@ -42,7 +42,15 @@ class OfferAdmin(admin.ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ["offer", "status", "funded_at"]
+    list_display = ["offer", "status", "funded_at", "review_deadline"]
+    readonly_fields = [
+        "status",
+        "funded_at",
+        "delivered_at",
+        "review_deadline",
+        "completed_at",
+        "correction_reason",
+    ]
     list_filter = ["status"]
 
 

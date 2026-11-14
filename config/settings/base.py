@@ -447,3 +447,20 @@ SPECTACULAR_SETTINGS = {
 KYC_WEBHOOK_SECRET = env("KYC_WEBHOOK_SECRET", default="")
 # Your stuff...
 # ------------------------------------------------------------------------------
+
+# Order lifecycle. Beat scans durable deadlines instead of long ETA messages.
+ORDER_REVIEW_PERIOD_SECONDS = env.int("ORDER_REVIEW_PERIOD_SECONDS", default=72 * 60 * 60)
+ORDER_RESULT_MAX_BYTES = env.int("ORDER_RESULT_MAX_BYTES", default=25 * 1024 * 1024)
+PAYMENT_SIMULATION_ENABLED = env.bool("PAYMENT_SIMULATION_ENABLED", default=False)
+PAYMENT_PROVIDERS_BY_COUNTRY = env.json("PAYMENT_PROVIDERS_BY_COUNTRY", default={})
+PAYMENT_BACKENDS = env.json("PAYMENT_BACKENDS", default={})
+CELERY_BEAT_SCHEDULE = {
+    "order-review-deadlines": {
+        "task": "sabil_book.offers.tasks.process_order_reviews",
+        "schedule": 60.0,
+    },
+    "recover-order-payments": {
+        "task": "sabil_book.payments.tasks.recover_order_payments",
+        "schedule": 60.0,
+    },
+}

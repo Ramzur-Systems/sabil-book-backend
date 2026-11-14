@@ -7,6 +7,7 @@ from django.db import models
 from django.db.models import CharField
 from django.db.models import DateTimeField
 from django.db.models import Q
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from sabil_book.users.models import ProviderProfile
@@ -155,16 +156,14 @@ class Message(models.Model):
 class Order(models.Model):
     class OrderStatus(models.TextChoices):
         FUNDED = "funded", _("Funded")
-        SENT = "sent", _("Sent")  # provider marked the work delivered
-        REVISION_REQUESTED = "revision_requested", _("Revision requested")
-        # reached either from SENT with no dispute, or from DISPUTE resolved
-        # in the provider's favor (payout issued)
-        CONFIRMED = "confirmed", _("Confirmed")
-        APPEAL = "appeal", _("Appeal")  # unrelated to the dispute flow below
-        DISPUTE = "dispute", _("Dispute")  # a dispute is in progress
-        UNRESOLVED = "unresolved", _("Unresolved")  # dispute ended with no resolution
-        # dispute resolved in the customer's favor, payment returned
-        REVERTED = "reverted", _("Reverted")
+        AWAITING_PAYMENT = "awaiting_payment", _("Awaiting payment")
+        DELIVERED = "delivered", _("Delivered")
+        UNDER_REVIEW = "under_review", _("Under review")
+        CORRECTION_REQUESTED = "correction_requested", _("Correction requested")
+        COMPLETED = "completed", _("Completed")
+        DISPUTED = "disputed", _("Disputed")
+        PAID_OUT = "paid_out", _("Paid out")
+        REFUNDED = "refunded", _("Refunded")
 
     offer = models.OneToOneField(
         Offer,
@@ -176,12 +175,27 @@ class Order(models.Model):
         _("status"),
         max_length=25,
         choices=OrderStatus.choices,
-        default=OrderStatus.FUNDED,
+        default=OrderStatus.AWAITING_PAYMENT,
     )
     funded_at = DateTimeField(null=True, blank=True)
+    delivered_at = DateTimeField(null=True, blank=True)
+    review_deadline = DateTimeField(null=True, blank=True, db_index=True)
+    completed_at = DateTimeField(null=True, blank=True)
+    correction_reason = models.TextField(blank=True)
 
     def __str__(self) -> str:
         return f"Order #{self.pk} ({self.get_status_display()})"
+
+    def transition_to(self, target):
+        """Validate an edge; persist through a locking order service."""
+        from sabil_book.exceptions import InvalidTransitionError  # noqa: PLC0415
+
+        from .order_services import ORDER_TRANSITIONS  # noqa: PLC0415
+
+        if target not in ORDER_TRANSITIONS.get(self.status, set()):
+            msg = f"Order cannot transition from {self.status} to {target}."
+            raise InvalidTransitionError(msg)
+        self.status = target
 
 
 class Attachment(models.Model):
@@ -191,6 +205,8 @@ class Attachment(models.Model):
         related_name="attachments",
         verbose_name=_("order"),
     )
+    file = models.FileField(upload_to="orders/results/%Y/%m/%d/", blank=True)
+    created_at = DateTimeField(default=timezone.now, editable=False)
     file_hash = CharField(
         _("Attached file hash"),
         max_length=255,
