@@ -5,6 +5,7 @@ services. Returning from an adapter never means money has moved successfully.
 """
 
 from celery import shared_task
+from django.conf import settings
 from django.db import transaction
 
 from sabil_book.offers.models import Order
@@ -90,6 +91,8 @@ def refund_order(order_id):
 @shared_task
 def recover_order_payments():
     """Recover lost on_commit messages; adapter operations must be idempotent."""
+    if not settings.PAYMENTS_ENABLED:
+        return
     for payment_id in Payment.objects.filter(status="pending").values_list(
         "pk",
         flat=True,

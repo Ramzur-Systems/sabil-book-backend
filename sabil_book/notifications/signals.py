@@ -6,6 +6,7 @@ from contextvars import ContextVar
 from functools import wraps
 from typing import TYPE_CHECKING
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models.signals import post_save
 from django.db.models.signals import pre_save
@@ -168,6 +169,8 @@ def notify_offer_events(sender, instance: Offer, *, created: bool, **kwargs) -> 
 @_safe_receiver
 def notify_payment_events(sender, instance: Payment, **kwargs) -> None:
     del sender, kwargs
+    if not settings.PAYMENTS_ENABLED:
+        return  # Payments are hidden from customers and providers.
     if instance.status != Payment.PaymentStatus.SUCCEEDED or not _field_changed(
         instance,
         "status",
@@ -263,6 +266,8 @@ def notify_dispute_events(
 @_safe_receiver
 def notify_payout_events(sender, instance: Payout, **kwargs) -> None:
     del sender, kwargs
+    if not settings.PAYMENTS_ENABLED:
+        return  # Payments are hidden from customers and providers.
     if instance.status != Payout.PayoutStatus.PAID or not _field_changed(
         instance,
         "status",

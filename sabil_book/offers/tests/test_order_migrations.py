@@ -89,3 +89,36 @@ def test_legacy_attachments_do_not_block_orders_after_scan_migration():
     finally:
         executor = MigrationExecutor(connection)
         executor.migrate(leaves)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_legacy_finished_orders_get_end_timestamps_for_retention():
+    executor = MigrationExecutor(connection)
+    leaves = executor.loader.graph.leaf_nodes()
+    old_target = [("offers", "0013_order_refunded_at")]
+    statuses = ["completed", "paid_out", "refunded", "under_review"]
+    offers = [OfferFactory() for _ in statuses]
+    try:
+        executor.migrate(old_target)
+        apps = executor.loader.project_state(old_target).apps
+        old_order = apps.get_model("offers", "Order")
+        ids = [
+            old_order.objects.create(offer_id=offer.pk, status=status).pk
+            for offer, status in zip(offers, statuses, strict=True)
+        ]
+        executor = MigrationExecutor(connection)
+        executor.migrate(leaves)
+        order_model = executor.loader.project_state(leaves).apps.get_model(
+            "offers", "Order",
+        )
+        completed, paid_out, refunded, open_order = (
+            order_model.objects.get(pk=pk) for pk in ids
+        )
+        assert completed.completed_at is not None
+        assert paid_out.completed_at is not None
+        assert refunded.refunded_at is not None
+        assert open_order.completed_at is None
+        assert open_order.refunded_at is None
+    finally:
+        executor = MigrationExecutor(connection)
+        executor.migrate(leaves)

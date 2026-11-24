@@ -17,6 +17,8 @@ from sabil_book.reviews.models import Dispute
 from sabil_book.users.models import ProviderProfile
 from sabil_book.users.tests.factories import UserFactory
 
+pytestmark = pytest.mark.usefixtures("payments_enabled")
+
 
 @pytest.fixture
 def unpaid_order(db, settings):

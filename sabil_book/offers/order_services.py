@@ -48,7 +48,8 @@ def _complete(order):
     order.completed_at = timezone.now()
     order.review_deadline = None
     order.save(update_fields=["status", "completed_at", "review_deadline"])
-    on_commit_robust(issue_order_payout.delay, order.pk)
+    if settings.PAYMENTS_ENABLED:
+        on_commit_robust(issue_order_payout.delay, order.pk)
     return order
 
 
@@ -156,7 +157,8 @@ def open_dispute(order_id, user, reason):
 def resolve_dispute(order_id, *, in_provider_favour, resolution):
     """Internal integration for trusted dispute handlers, never a public action.
 
-    A refund remains disputed until the payment adapter confirms it.
+    A refund remains disputed until the payment adapter confirms it. With
+    payments disabled no money moves, so the order is refunded immediately.
     """
     from sabil_book.payments.tasks import refund_order  # noqa: PLC0415
 
@@ -173,6 +175,11 @@ def resolve_dispute(order_id, *, in_provider_favour, resolution):
     dispute.save(update_fields=["resolution", "outcome"])
     if in_provider_favour:
         return _complete(order)
+    if not settings.PAYMENTS_ENABLED:
+        order.transition_to(S.REFUNDED)
+        order.refunded_at = timezone.now()
+        order.save(update_fields=["status", "refunded_at"])
+        return order
     on_commit_robust(refund_order.delay, order.pk)
     return order
 

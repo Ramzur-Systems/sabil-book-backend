@@ -455,6 +455,9 @@ ORDER_REVIEW_PERIOD_SECONDS = env.int(
     default=72 * 60 * 60,
 )
 ORDER_RESULT_MAX_BYTES = env.int("ORDER_RESULT_MAX_BYTES", default=25 * 1024 * 1024)
+# Payments are hidden from customers and providers until the payment rules are
+# decided: orders start funded, no money moves, and no payment data is exposed.
+PAYMENTS_ENABLED = env.bool("PAYMENTS_ENABLED", default=False)
 PAYMENT_SIMULATION_ENABLED = env.bool("PAYMENT_SIMULATION_ENABLED", default=False)
 PAYMENT_PROVIDERS_BY_COUNTRY = env.json("PAYMENT_PROVIDERS_BY_COUNTRY", default={})
 PAYMENT_BACKENDS = env.json("PAYMENT_BACKENDS", default={})
@@ -524,6 +527,9 @@ CELERY_BEAT_SCHEDULE["recover-attachment-scans"] = {
 # Results stay downloadable after completion, then are deleted this many days
 # after the order completes or is refunded.
 ATTACHMENT_RETENTION_DAYS = env.int("ATTACHMENT_RETENTION_DAYS", default=30)
+# Backup archives are deleted after this many days, which bounds how long a
+# purged result can survive in backups.
+ATTACHMENT_BACKUP_KEEP_DAYS = env.int("ATTACHMENT_BACKUP_KEEP_DAYS", default=7)
 CELERY_BEAT_SCHEDULE["purge-expired-attachments"] = {
     "task": "sabil_book.offers.tasks.purge_expired_attachments",
     "schedule": 60 * 60.0,

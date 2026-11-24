@@ -1,3 +1,4 @@
+from django.conf import settings
 from rest_framework import serializers
 
 from sabil_book.payments.models import Payment
@@ -31,6 +32,12 @@ class OrderSerializer(serializers.ModelSerializer):
             "attachments",
         ]
         read_only_fields = fields
+
+    def get_fields(self):
+        fields = super().get_fields()
+        if not settings.PAYMENTS_ENABLED:
+            fields.pop("funded_at")  # Payment timing is hidden for now.
+        return fields
 
 
 class ResultUploadSerializer(serializers.Serializer):

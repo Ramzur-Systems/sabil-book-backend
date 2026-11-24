@@ -579,3 +579,33 @@ def test_upload_survives_broker_outage_after_commit(
     ):
         attachment = upload(order)
     assert attachment.av_scan_status == "pending"
+
+
+def test_notification_failure_does_not_lose_the_scan_verdict(order):
+    attachment = upload(order)
+    with (
+        patch("sabil_book.offers.antivirus.scan_stream", return_value="infected"),
+        patch(
+            "sabil_book.offers.scan_services.NotificationService.notify",
+            side_effect=RuntimeError("template missing"),
+        ),
+    ):
+        scan_attachment(attachment.pk)
+    attachment.refresh_from_db()
+    assert attachment.av_scan_status == "infected"
+    assert not attachment.file
+    assert upload(order).av_scan_status == "pending"  # Replacement allowed.
+
+
+def test_rejection_reaches_providers_who_opted_out_of_non_critical(order):
+    from sabil_book.notifications.models import NotificationPreference  # noqa: PLC0415
+
+    NotificationPreference.objects.update_or_create(
+        user=order.offer.provider.user,
+        defaults={"receive_non_critical": False},
+    )
+    attachment = upload(order)
+    with patch("sabil_book.offers.antivirus.scan_stream", return_value="infected"):
+        scan_attachment(attachment.pk)
+    notice = NotificationDelivery.objects.get(event="attachment_rejected")
+    assert notice.status != NotificationDelivery.DeliveryStatus.SKIPPED

@@ -1,3 +1,4 @@
+import logging
 from datetime import timedelta
 
 from django.conf import settings
@@ -11,6 +12,8 @@ from sabil_book.transactions import on_commit_robust
 from .models import Attachment
 from .models import Order
 from .order_services import locked_order
+
+logger = logging.getLogger(__name__)
 
 
 @transaction.atomic
@@ -71,12 +74,25 @@ def finish_scan(attachment_id, result, error=""):
         update_fields.append("file")
     attachment.save(update_fields=update_fields)
     if result != Attachment.ScanStatus.CLEAN:
-        NotificationService.notify(
-            event=NotificationEvent.ATTACHMENT_REJECTED,
-            recipient=order.offer.provider.user,
-            context={
-                "order_id": order.pk,
-                "attachment_id": attachment.pk,
-                "scan_status": result,
-            },
+        _notify_rejected(order, attachment, result)
+
+
+def _notify_rejected(order, attachment, result):
+    # A savepoint keeps a notification failure from rolling back the verdict:
+    # otherwise the upload would stay PENDING and block replacements.
+    try:
+        with transaction.atomic():
+            NotificationService.notify(
+                event=NotificationEvent.ATTACHMENT_REJECTED,
+                recipient=order.offer.provider.user,
+                context={
+                    "order_id": order.pk,
+                    "attachment_id": attachment.pk,
+                    "scan_status": result,
+                },
+            )
+    except Exception:
+        logger.exception(
+            "Could not notify the provider about rejected attachment %s.",
+            attachment.pk,
         )

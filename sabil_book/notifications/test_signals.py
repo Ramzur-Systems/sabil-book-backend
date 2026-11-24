@@ -12,6 +12,7 @@ from sabil_book.payments.tests.factories import PayoutFactory
 from sabil_book.reviews.tests.factories import DisputeFactory
 
 
+@pytest.mark.usefixtures("payments_enabled")
 @pytest.mark.django_db(transaction=True)
 def test_domain_lifecycle_triggers_all_notification_emails():
     offer = OfferFactory.create(status=Offer.OfferStatus.PENDING)

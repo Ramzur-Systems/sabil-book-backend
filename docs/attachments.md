@@ -1,5 +1,10 @@
 # Private result attachments
 
+> Payments are currently disabled (`PAYMENTS_ENABLED=False`, the default):
+> accepting an offer creates the order already `funded`, no money moves, and
+> customers and providers see no payment data. The attachment flow below is
+> the same either way.
+
 Results a provider delivers are the paid product of an order. They are stored in
 a private SeaweedFS bucket, never served publicly, scanned before anyone can
 see them, kept downloadable after the order completes, and deleted a retention
@@ -22,8 +27,10 @@ customer, and starts the full review period. Duplicate tasks do not publish twic
 
 - **Infected, damaged, changed hash or unexpected scanner reply:** the
   attachment becomes `infected` or `error`, the provider gets a critical email,
-  and can upload a replacement. The stored object is deleted once that verdict
-  commits; `storage_key` keeps the original key for auditing.
+  and can upload a replacement. The email is critical, so it is sent even to
+  providers who opted out of non-critical notifications, and a failure to send
+  it never rolls back the verdict. The stored object is deleted once that
+  verdict commits; `storage_key` keeps the original key for auditing.
 - **Scanner or storage outage:** the task retries three times, then leaves the
   attachment `pending`. Beat (`recover_attachment_scans`, every minute)
   re-queues pending scans idle for `ATTACHMENT_SCAN_RECOVERY_GRACE_SECONDS`
@@ -58,8 +65,10 @@ Customers keep access after the order completes. `purge_expired_attachments`
 been `completed` or `paid_out` for `ATTACHMENT_RETENTION_DAYS` (default 30)
 since `completed_at`, or `refunded` since `refunded_at`. Orders, payments,
 payouts and disputes are never deleted. Open orders (including `disputed`) keep
-their attachments however old. Orders migrated without these timestamps are
-skipped.
+their attachments however old. Customers can still download results of
+`refunded` orders until the purge. Migration `offers.0014` gives legacy
+finished orders an end timestamp at migration time, so their attachments
+follow the same retention.
 
 `sweep_orphan_attachments` (every 6 hours) deletes stored objects that no
 Attachment references and that are older than `ATTACHMENT_ORPHAN_GRACE_SECONDS`
@@ -136,6 +145,7 @@ Other settings shared by Django and Celery:
 ```dotenv
 ATTACHMENT_DOWNLOAD_TTL_SECONDS=300
 ATTACHMENT_RETENTION_DAYS=30
+ATTACHMENT_BACKUP_KEEP_DAYS=7
 ORDER_RESULT_MAX_BYTES=26214400
 ORDER_RESULT_ALLOWED_EXTENSIONS=pdf,txt,png,jpg,jpeg
 CLAMAV_HOST=clamav
@@ -146,10 +156,15 @@ CLAMAV_TIMEOUT_SECONDS=30
 ### Backups
 
 `backup_attachments` exports every stored object through the S3 API into a
-dated `attachments_<timestamp>.tar.gz` (mode 600) and deletes archives older
-than `ATTACHMENT_RETENTION_DAYS`, so purged results do not outlive the
-retention period in backups. Objects are never modified after upload, so no
-downtime is needed. A failed run leaves no partial archive behind.
+dated `attachments_<timestamp>.tar.gz`, private (mode 600) from the moment it
+is created. Objects are never modified after upload, so no downtime is needed;
+objects deleted while it runs (rejections, purges, sweeps) are skipped and
+logged. A failed run leaves no partial archive behind.
+
+Archives older than `ATTACHMENT_BACKUP_KEEP_DAYS` (default 7) are deleted on
+each run. A result therefore survives in backups for at most that many days
+after the retention purge removes it; keep offsite copies for no longer than
+that too.
 
 In production the on-demand `attachments-backup` service (profile
 `maintenance`, never started by `up`) writes into the
@@ -161,8 +176,8 @@ crontab, for example:
 ```
 
 Archives contain the results unencrypted. That volume lives on the same host,
-so also copy the archives off the server (encrypted, kept no longer than the
-retention period) to survive losing the host.
+so also copy the archives off the server (encrypted, kept no longer than
+`ATTACHMENT_BACKUP_KEEP_DAYS`) to survive losing the host.
 
 To restore, restore the database first, then:
 

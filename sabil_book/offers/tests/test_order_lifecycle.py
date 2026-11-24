@@ -100,6 +100,7 @@ def test_upload_stores_file_hash_and_deadline(order, settings):
     assert order.status == S.UNDER_REVIEW
 
 
+@pytest.mark.usefixtures("payments_enabled")
 def test_accelerated_timer_completes_once_and_enqueues_after_commit(
     order,
     settings,
@@ -149,6 +150,7 @@ def test_correction_cancels_timer_and_redelivery_resets_period(order, settings):
     assert order.status == S.COMPLETED
 
 
+@pytest.mark.usefixtures("payments_enabled")
 @pytest.mark.parametrize("provider_wins", [True, False])
 def test_dispute_resolution_integrates_payout_and_refund(
     order,
@@ -292,6 +294,7 @@ def test_unfunded_result_is_rejected_without_attachment(order):
     assert not order.attachments.exists()
 
 
+@pytest.mark.usefixtures("payments_enabled")
 def test_payment_api_selects_country_and_callback_funds_order(order, client, settings):
     order.status = S.AWAITING_PAYMENT
     order.funded_at = None
@@ -318,6 +321,7 @@ def test_payment_api_selects_country_and_callback_funds_order(order, client, set
     assert client.post(f"/api/orders/{order.pk}/pay/").status_code == 409
 
 
+@pytest.mark.usefixtures("payments_enabled")
 def test_unconfigured_payment_does_not_claim_success(order, client):
     order.status = S.AWAITING_PAYMENT
     order.save()
@@ -403,6 +407,7 @@ def test_pending_dispute_cannot_be_refunded_without_resolution(order):
     assert order.status == S.DISPUTED
 
 
+@pytest.mark.usefixtures("payments_enabled")
 def test_financial_tasks_call_adapter_without_faking_success(order):
     from sabil_book.payments.tasks import initiate_payment  # noqa: PLC0415
     from sabil_book.payments.tasks import refund_order  # noqa: PLC0415
@@ -445,6 +450,7 @@ def test_failed_file_storage_does_not_advance_order(order):
     assert not order.attachments.exists()
 
 
+@pytest.mark.usefixtures("payments_enabled")
 def test_accept_offer_creates_unpaid_order(db):
     from sabil_book.offers.services import accept_offer  # noqa: PLC0415
     from sabil_book.offers.tests.factories import OfferFactory  # noqa: PLC0415

@@ -1,7 +1,9 @@
+from django.conf import settings
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
 from rest_framework.parsers import FormParser
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -48,9 +50,15 @@ class OrderViewSet(ReadOnlyModelViewSet):
             return transition_error(exc)
         return Response(self.get_serializer(result).data)
 
-    @extend_schema(request=None, responses={202: OrderPaymentSerializer})
+    @extend_schema(
+        request=None,
+        responses={202: OrderPaymentSerializer},
+        exclude=not settings.PAYMENTS_ENABLED,
+    )
     @action(detail=True, methods=["post"])
     def pay(self, request, pk=None):
+        if not settings.PAYMENTS_ENABLED:
+            raise NotFound
         order = self.get_object()
         try:
             payment = initiate_order_payment(order.pk, request.user)
