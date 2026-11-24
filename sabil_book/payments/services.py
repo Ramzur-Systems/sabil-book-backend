@@ -1,7 +1,5 @@
 """Payment adapter boundary, with an explicit development simulation mode."""
 
-from functools import partial
-
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -12,6 +10,7 @@ from sabil_book.exceptions import InvalidTransitionError
 from sabil_book.offers.models import Order
 from sabil_book.offers.order_services import locked_order
 from sabil_book.offers.order_services import require_customer
+from sabil_book.transactions import on_commit_robust
 
 from .models import Payment
 from .models import Payout
@@ -71,7 +70,7 @@ def initiate_order_payment(order_id, user):
         SimulatedPaymentBackend().initiate_payment(payment)
         payment.refresh_from_db()
     else:
-        transaction.on_commit(partial(initiate_payment.delay, payment.pk), robust=True)
+        on_commit_robust(initiate_payment.delay, payment.pk)
     return payment
 
 
@@ -133,7 +132,8 @@ def confirm_refund(payment_id):
         msg = "A customer-favour dispute resolution is required."
         raise InvalidTransitionError(msg)
     order.transition_to(Order.OrderStatus.REFUNDED)
-    order.save(update_fields=["status"])
+    order.refunded_at = timezone.now()
+    order.save(update_fields=["status", "refunded_at"])
     payment.status = Payment.PaymentStatus.REFUNDED
     payment.save(update_fields=["status"])
     return order

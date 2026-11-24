@@ -29,7 +29,9 @@ def unpaid_order(db, settings):
     [("KZ", "KZT"), ("QA", "QAR"), ("US", "USD"), ("", "USD")],
 )
 def test_simulated_payment_immediately_funds_order_without_worker(
-    unpaid_order, country, currency,
+    unpaid_order,
+    country,
+    currency,
 ):
     customer = unpaid_order.offer.request.customer
     customer.country = country
@@ -128,6 +130,7 @@ def test_simulated_refund_completes_dispute(db, settings):
     payment.refresh_from_db()
     assert payment.status == Payment.PaymentStatus.REFUNDED
     assert order.status == Order.OrderStatus.REFUNDED
+    assert order.refunded_at is not None  # Starts the attachment retention.
 
 
 def test_simulated_backend_unavailable_when_simulation_disabled(settings):

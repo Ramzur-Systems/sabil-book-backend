@@ -1,0 +1,87 @@
+#!/bin/sh
+# Single-node SeaweedFS for private result attachments.
+#
+# Only the S3 API listens on the container network. Master, volume and filer
+# (whose HTTP API has no authentication) bind to loopback, so other containers
+# can reach objects only through S3 with the scoped access key.
+set -eu
+
+: "${ATTACHMENT_S3_BUCKET:?ATTACHMENT_S3_BUCKET is required}"
+: "${ATTACHMENT_S3_ACCESS_KEY:?ATTACHMENT_S3_ACCESS_KEY is required}"
+: "${ATTACHMENT_S3_SECRET_KEY:?ATTACHMENT_S3_SECRET_KEY is required}"
+
+bucket="$ATTACHMENT_S3_BUCKET"
+case "$bucket" in
+  *[!a-z0-9.-]* | "") echo "Invalid bucket name: $bucket" >&2; exit 1 ;;
+esac
+for value in "$ATTACHMENT_S3_ACCESS_KEY" "$ATTACHMENT_S3_SECRET_KEY"; do
+  case "$value" in
+    *[!A-Za-z0-9+/=_-]*) echo "Access keys may only use A-Z a-z 0-9 + / = _ -" >&2; exit 1 ;;
+  esac
+done
+if [ "${#ATTACHMENT_S3_SECRET_KEY}" -lt 32 ]; then
+  echo "ATTACHMENT_S3_SECRET_KEY must be at least 32 characters." >&2
+  exit 1
+fi
+
+# The app key may only read, write (including delete) and list this bucket.
+# No WriteAcp: the key cannot make objects public. No admin identity exists.
+umask 077
+mkdir -p /etc/seaweedfs
+cat > /etc/seaweedfs/s3.json <<JSON
+{
+  "identities": [
+    {
+      "name": "sabil-book-app",
+      "credentials": [
+        {
+          "accessKey": "$ATTACHMENT_S3_ACCESS_KEY",
+          "secretKey": "$ATTACHMENT_S3_SECRET_KEY"
+        }
+      ],
+      "actions": ["Read:$bucket", "Write:$bucket", "List:$bucket"]
+    }
+  ]
+}
+JSON
+
+rm -f /tmp/seaweedfs-ready
+weed server \
+  -dir=/data \
+  -ip=127.0.0.1 \
+  -ip.bind=127.0.0.1 \
+  -s3 \
+  -s3.ip.bind=0.0.0.0 \
+  -s3.port=8333 \
+  -s3.config=/etc/seaweedfs/s3.json \
+  -filer.encryptVolumeData \
+  -volume.max=0 \
+  -master.volumeSizeLimitMB=1024 &
+pid=$!
+trap 'kill -TERM "$pid" 2>/dev/null; wait "$pid"; exit $?' TERM INT
+
+# Create the bucket once the cluster answers; an existing bucket is fine.
+attempt=0
+while :; do
+  if ! kill -0 "$pid" 2>/dev/null; then
+    echo "weed server exited during startup." >&2
+    wait "$pid"
+    exit 1
+  fi
+  out=$(echo "s3.bucket.create -name $bucket" \
+    | weed shell -master=127.0.0.1:9333 2>&1 || true)
+  case "$out" in
+    *"created bucket"* | *"already exists"*) break ;;
+  esac
+  attempt=$((attempt + 1))
+  if [ "$attempt" -ge 120 ]; then
+    echo "Could not create bucket $bucket:" >&2
+    echo "$out" >&2
+    kill -TERM "$pid"
+    exit 1
+  fi
+  sleep 1
+done
+echo "Bucket $bucket is ready."
+touch /tmp/seaweedfs-ready
+wait "$pid"

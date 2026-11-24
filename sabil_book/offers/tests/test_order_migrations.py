@@ -74,7 +74,9 @@ def test_legacy_attachments_do_not_block_orders_after_scan_migration():
         order = old_order.objects.create(offer_id=offer.pk, status="delivered")
         legacy = old_attachment.objects.create(order_id=order.pk, file_hash="abc")
         uploaded = old_attachment.objects.create(
-            order_id=order.pk, file_hash="def", file="results/1/new.pdf",
+            order_id=order.pk,
+            file_hash="def",
+            file="results/1/new.pdf",
         )
         assert legacy.av_scan_status == "pending"
         executor = MigrationExecutor(connection)

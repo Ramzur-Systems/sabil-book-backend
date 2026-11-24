@@ -91,11 +91,13 @@ def refund_order(order_id):
 def recover_order_payments():
     """Recover lost on_commit messages; adapter operations must be idempotent."""
     for payment_id in Payment.objects.filter(status="pending").values_list(
-        "pk", flat=True,
+        "pk",
+        flat=True,
     ):
         initiate_payment.delay(payment_id)
     for order_id in Order.objects.filter(status="completed").values_list(
-        "pk", flat=True,
+        "pk",
+        flat=True,
     ):
         issue_order_payout.delay(order_id)
     for order_id in (

@@ -43,6 +43,7 @@ def accept_offer(offer_id: int, customer) -> Offer:
     )
 
     Order.objects.get_or_create(
-        offer=offer, defaults={"status": Order.OrderStatus.AWAITING_PAYMENT},
+        offer=offer,
+        defaults={"status": Order.OrderStatus.AWAITING_PAYMENT},
     )
     return offer

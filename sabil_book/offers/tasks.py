@@ -2,8 +2,11 @@ from datetime import timedelta
 
 from celery import shared_task
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
+
+from sabil_book.transactions import on_commit_robust
 
 from .models import Order
 from .order_services import process_review_timer
@@ -95,6 +98,35 @@ def recover_attachment_scans():
     Attachment.objects.filter(pk__in=ids).update(av_scan_queued_at=now)
     for attachment_id in ids:
         scan_attachment.delay(attachment_id)
+
+
+@shared_task
+def purge_expired_attachments():
+    """Delete results (rows and objects) a retention period after the order ends.
+
+    Customers keep access after completion; only attachments are removed, never
+    the order or its payment records. Objects are deleted after the row commits;
+    if that delete fails, sweep_orphan_attachments removes the object later.
+    """
+    from .models import Attachment  # noqa: PLC0415
+
+    cutoff = timezone.now() - timedelta(days=settings.ATTACHMENT_RETENTION_DAYS)
+    expired = Attachment.objects.filter(
+        Q(
+            order__status__in=[Order.OrderStatus.COMPLETED, Order.OrderStatus.PAID_OUT],
+            order__completed_at__lte=cutoff,
+        )
+        | Q(order__status=Order.OrderStatus.REFUNDED, order__refunded_at__lte=cutoff),
+    )
+    purged = 0
+    for attachment in expired.iterator():
+        with transaction.atomic():
+            if attachment.file:
+                storage, key = attachment.file.storage, attachment.file.name
+                on_commit_robust(storage.delete, key)
+            attachment.delete()
+        purged += 1
+    return purged
 
 
 def _stored_keys(storage, prefix):

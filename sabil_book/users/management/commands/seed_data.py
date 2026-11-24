@@ -112,6 +112,8 @@ def _seed_order_statuses(offers, statuses):
         if order.status in COMPLETED_ORDER_STATUSES:
             order.delivered_at = now
             order.completed_at = now
+        if order.status == Order.OrderStatus.REFUNDED:
+            order.refunded_at = now
         order.save(
             update_fields=[
                 "status",
@@ -120,6 +122,7 @@ def _seed_order_statuses(offers, statuses):
                 "review_deadline",
                 "correction_reason",
                 "completed_at",
+                "refunded_at",
             ],
         )
         orders.append(order)

@@ -184,6 +184,7 @@ class Order(models.Model):
     delivered_at = DateTimeField(null=True, blank=True)
     review_deadline = DateTimeField(null=True, blank=True, db_index=True)
     completed_at = DateTimeField(null=True, blank=True)
+    refunded_at = DateTimeField(null=True, blank=True)
     correction_reason = models.TextField(blank=True)
 
     def __str__(self) -> str:

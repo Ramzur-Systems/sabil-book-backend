@@ -22,6 +22,7 @@ from sabil_book.offers.models import Order
 from sabil_book.offers.order_services import process_review_timer
 from sabil_book.offers.order_services import upload_result
 from sabil_book.offers.storage import PrivateAttachmentStorage
+from sabil_book.offers.tasks import purge_expired_attachments
 from sabil_book.offers.tasks import recover_attachment_scans
 from sabil_book.offers.tasks import scan_attachment
 from sabil_book.offers.tasks import sweep_orphan_attachments
@@ -178,7 +179,8 @@ def test_recovery_fails_closed_after_max_age(order):
 
 
 def test_rejected_scan_deletes_stored_object(
-    order, django_capture_on_commit_callbacks,
+    order,
+    django_capture_on_commit_callbacks,
 ):
     attachment = upload(order)
     storage, key = attachment.file.storage, attachment.file.name
@@ -220,7 +222,9 @@ def test_download_filename_keeps_extension(order):
     client = APIClient()
     client.force_authenticate(order.offer.request.customer)
     with patch.object(
-        attachment.file.storage, "url", return_value="https://s3.test/signed",
+        attachment.file.storage,
+        "url",
+        return_value="https://s3.test/signed",
     ) as url:
         response = client.get(f"/api/attachments/{attachment.pk}/download/")
     assert response.status_code == 200
@@ -337,7 +341,8 @@ def test_private_s3_storage_generates_v4_expiring_urls(settings):
         storage.get_object_parameters("result.txt")["CacheControl"]
         == "private, no-store"
     )
-    assert storage.default_acl == "private"
+    # No ACL header: the key must not need permission to change ACLs.
+    assert storage.default_acl is None
     url = storage.url("results/result.txt", expire=123)
     query = parse_qs(urlsplit(url).query)
     assert query["X-Amz-Expires"] == ["123"]
@@ -364,8 +369,10 @@ def test_legacy_delivered_scan_preserves_deadline(order):
     assert attachment.av_scan_status == "clean"
 
 
-# Explicit opt-in: creates and deletes a bucket in the configured test service.
-def test_real_s3_private_upload_and_expiring_download(settings):
+# Explicit opt-in against a real S3-compatible service (e.g. local SeaweedFS).
+# Uses ATTACHMENT_TEST_S3_BUCKET when the key cannot create buckets; otherwise a
+# temporary bucket is created and removed.
+def test_real_s3_private_upload_and_expiring_download(settings):  # noqa: PLR0915
     import os  # noqa: PLC0415
     import time  # noqa: PLC0415
     from urllib.error import HTTPError  # noqa: PLC0415
@@ -374,32 +381,71 @@ def test_real_s3_private_upload_and_expiring_download(settings):
 
     from django.core.files.base import ContentFile  # noqa: PLC0415
 
+    from sabil_book.offers.tasks import _stored_keys  # noqa: PLC0415
+
     endpoint = os.environ.get("ATTACHMENT_TEST_S3_ENDPOINT")
     if not endpoint:
         pytest.skip("Set ATTACHMENT_TEST_S3_ENDPOINT to run the real S3 test.")
     settings.ATTACHMENT_S3_ENDPOINT_URL = endpoint
+    settings.ATTACHMENT_S3_PUBLIC_ENDPOINT_URL = None
     settings.ATTACHMENT_S3_ACCESS_KEY = os.environ["ATTACHMENT_TEST_S3_ACCESS_KEY"]
     settings.ATTACHMENT_S3_SECRET_KEY = os.environ["ATTACHMENT_TEST_S3_SECRET_KEY"]
-    settings.ATTACHMENT_S3_BUCKET = f"attachment-test-{uuid4().hex}"
+    existing_bucket = os.environ.get("ATTACHMENT_TEST_S3_BUCKET")
+    settings.ATTACHMENT_S3_BUCKET = existing_bucket or f"attachment-test-{uuid4().hex}"
     storage = PrivateAttachmentStorage()
     client = storage.connection.meta.client
-    client.create_bucket(Bucket=storage.bucket_name)
+    if not existing_bucket:
+        client.create_bucket(Bucket=storage.bucket_name)
+    prefix = f"results/test-{uuid4().hex}"
+    key = None
     try:
-        key = storage.save("result.txt", ContentFile(b"test result"))
-        signed = storage.url(key, expire=1)
+        key = storage.save(f"{prefix}/result.pdf", ContentFile(b"%PDF-1.4 test"))
+        head = client.head_object(Bucket=storage.bucket_name, Key=key)
+        assert head["CacheControl"] == "private, no-store"
+        assert list(_stored_keys(storage, prefix)) == [key]
+        signed = storage.url(
+            key,
+            expire=2,
+            parameters={
+                "ResponseContentDisposition": 'attachment; filename="result.pdf"',
+            },
+        )
         unsigned = signed.split("?", 1)[0]
         with pytest.raises(HTTPError) as denied:
             urlopen(unsigned, timeout=5)  # noqa: S310
         assert denied.value.code == 403
+        with pytest.raises(HTTPError) as tampered:
+            urlopen(signed.replace("result.pdf", "result.exe"), timeout=5)  # noqa: S310
+        assert tampered.value.code == 403
         with urlopen(signed, timeout=5) as response:  # noqa: S310
-            assert response.read() == b"test result"
-        time.sleep(2)
+            assert response.read() == b"%PDF-1.4 test"
+            assert response.headers["Content-Disposition"] == (
+                'attachment; filename="result.pdf"'
+            )
+        time.sleep(3)
         with pytest.raises(HTTPError) as expired:
             urlopen(signed, timeout=5)  # noqa: S310
         assert expired.value.code == 403
+        storage.delete(key)
+        assert not storage.exists(key)
+        key = None
     finally:
-        client.delete_object(Bucket=storage.bucket_name, Key="result.txt")
-        client.delete_bucket(Bucket=storage.bucket_name)
+        if key:
+            storage.delete(key)
+        if not existing_bucket:
+            client.delete_bucket(Bucket=storage.bucket_name)
+
+
+def test_download_urls_are_signed_for_the_public_endpoint(settings):
+    settings.ATTACHMENT_S3_ENDPOINT_URL = "http://seaweedfs:8333"
+    settings.ATTACHMENT_S3_PUBLIC_ENDPOINT_URL = "https://files.example.com"
+    settings.ATTACHMENT_S3_ACCESS_KEY = "test-access"
+    settings.ATTACHMENT_S3_SECRET_KEY = "test-secret"
+    url = PrivateAttachmentStorage().url("results/1/a.pdf", expire=60)
+    parts = urlsplit(url)
+    assert f"{parts.scheme}://{parts.netloc}" == "https://files.example.com"
+    assert parts.path == "/sabil-book-results/results/1/a.pdf"
+    assert "X-Amz-Signature" in parse_qs(parts.query)
 
 
 @pytest.mark.parametrize(
@@ -411,7 +457,9 @@ def test_real_s3_private_upload_and_expiring_download(settings):
     ],
 )
 def test_damaged_documents_are_not_published_even_when_av_returns_clean(
-    order, filename, content,
+    order,
+    filename,
+    content,
 ):
     upload_result(
         order.pk,
@@ -441,7 +489,8 @@ def test_valid_document_formats_pass_validation(order, extension):
         writer.write(buffer)
     elif extension in {"png", "jpg"}:
         Image.new("RGB", (2, 2)).save(
-            buffer, format="PNG" if extension == "png" else "JPEG",
+            buffer,
+            format="PNG" if extension == "png" else "JPEG",
         )
     else:
         buffer.write(("a" * 1023 + "Привет").encode())
@@ -455,3 +504,78 @@ def test_valid_document_formats_pass_validation(order, extension):
         scan_attachment(attachment.pk)
     attachment.refresh_from_db()
     assert attachment.av_scan_status == "clean"
+
+
+def _finished(order, status, days_ago):
+    when = timezone.now() - timedelta(days=days_ago)
+    field = "refunded_at" if status == S.REFUNDED else "completed_at"
+    Order.objects.filter(pk=order.pk).update(status=status, **{field: when})
+
+
+@pytest.mark.parametrize("status", [S.COMPLETED, S.PAID_OUT, S.REFUNDED])
+def test_attachments_are_purged_after_retention(
+    order,
+    status,
+    settings,
+    django_capture_on_commit_callbacks,
+):
+    settings.ATTACHMENT_RETENTION_DAYS = 30
+    attachment = upload(order)
+    storage, key = attachment.file.storage, attachment.file.name
+    _finished(order, status, days_ago=29)
+    assert purge_expired_attachments() == 0  # Still downloadable.
+    _finished(order, status, days_ago=31)
+    with django_capture_on_commit_callbacks(execute=True):
+        assert purge_expired_attachments() == 1
+    assert not Attachment.objects.filter(pk=attachment.pk).exists()
+    assert not storage.exists(key)
+    order.refresh_from_db()
+    assert order.status == status  # Only the attachment is removed.
+
+
+@pytest.mark.parametrize(
+    "status",
+    [S.FUNDED, S.DELIVERED, S.UNDER_REVIEW, S.CORRECTION_REQUESTED, S.DISPUTED],
+)
+def test_open_orders_keep_attachments_regardless_of_age(order, status):
+    attachment = upload(order)
+    Order.objects.filter(pk=order.pk).update(
+        status=status,
+        completed_at=timezone.now() - timedelta(days=365),
+    )
+    assert purge_expired_attachments() == 0
+    assert Attachment.objects.filter(pk=attachment.pk).exists()
+
+
+def test_purge_leaves_object_for_sweeper_when_storage_delete_fails(
+    order,
+    settings,
+    django_capture_on_commit_callbacks,
+):
+    attachment = upload(order)
+    _finished(order, S.PAID_OUT, days_ago=31)
+    with (
+        patch.object(attachment.file.storage, "delete", side_effect=OSError),
+        django_capture_on_commit_callbacks(execute=True),
+    ):
+        assert purge_expired_attachments() == 1  # robust on_commit: no crash.
+    assert not Attachment.objects.filter(pk=attachment.pk).exists()
+    settings.ATTACHMENT_ORPHAN_GRACE_SECONDS = -1
+    assert sweep_orphan_attachments() == 1
+
+
+def test_upload_survives_broker_outage_after_commit(
+    order,
+    django_capture_on_commit_callbacks,
+):
+    # A failing robust callback must be logged, not raised (the row is
+    # committed and recovery re-queues the scan later).
+    with (
+        patch(
+            "sabil_book.offers.tasks.scan_attachment.delay",
+            side_effect=ConnectionError("broker down"),
+        ),
+        django_capture_on_commit_callbacks(execute=True),
+    ):
+        attachment = upload(order)
+    assert attachment.av_scan_status == "pending"

@@ -1,5 +1,4 @@
 from datetime import timedelta
-from functools import partial
 
 from django.conf import settings
 from django.db import transaction
@@ -7,6 +6,7 @@ from django.utils import timezone
 
 from sabil_book.notifications.events import NotificationEvent
 from sabil_book.notifications.services import NotificationService
+from sabil_book.transactions import on_commit_robust
 
 from .models import Attachment
 from .models import Order
@@ -66,7 +66,7 @@ def finish_scan(attachment_id, result, error=""):
         # Rejected objects are never served; drop them once the verdict commits.
         # storage_key keeps the original key for auditing.
         storage, key = attachment.file.storage, attachment.file.name
-        transaction.on_commit(partial(storage.delete, key), robust=True)
+        on_commit_robust(storage.delete, key)
         attachment.file = ""
         update_fields.append("file")
     attachment.save(update_fields=update_fields)

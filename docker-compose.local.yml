@@ -3,6 +3,7 @@ volumes:
   sabil_book_local_postgres_data: {}
   sabil_book_local_postgres_data_backups: {}
   sabil_book_local_redis_data: {}
+  sabil_book_local_seaweedfs_data: {}
 
 services:
   clamav:
@@ -11,6 +12,26 @@ services:
       - clamav_data:/var/lib/clamav
     # clamd has no authentication: keep port 3310 inside the Compose network.
 
+  seaweedfs:
+    build:
+      context: .
+      dockerfile: ./compose/production/seaweedfs/Dockerfile
+    image: sabil_book_local_seaweedfs
+    container_name: sabil_book_local_seaweedfs
+    env_file:
+      - ./.envs/.local/.attachments
+    volumes:
+      - sabil_book_local_seaweedfs_data:/data
+    # Only the S3 API, and only on this machine: browsers follow signed
+    # download URLs to http://localhost:8333.
+    ports:
+      - '127.0.0.1:8333:8333'
+    healthcheck:
+      test: ['CMD', 'test', '-f', '/tmp/seaweedfs-ready']
+      interval: 2s
+      timeout: 2s
+      retries: 60
+
   django: &django
     build:
       context: .
@@ -18,9 +39,14 @@ services:
     image: sabil_book_local_django
     container_name: sabil_book_local_django
     depends_on:
-      - postgres
-      - redis
-      - mailhog
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      mailhog:
+        condition: service_started
+      seaweedfs:
+        condition: service_healthy
     volumes:
       - /app/.venv
       - .:/app:z
@@ -29,6 +55,7 @@ services:
         required: false
       - path: ./.envs/.local/.postgres
         required: false
+      - ./.envs/.local/.attachments
     ports:
       - '8000:8000'
     command: /start
@@ -63,10 +90,16 @@ services:
     image: sabil_book_local_celeryworker
     container_name: sabil_book_local_celeryworker
     depends_on:
-      - clamav
-      - redis
-      - postgres
-      - mailhog
+      clamav:
+        condition: service_started
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_started
+      mailhog:
+        condition: service_started
+      seaweedfs:
+        condition: service_healthy
     ports: []
     command: /start-celeryworker
 
@@ -75,8 +108,10 @@ services:
     image: sabil_book_local_celerybeat
     container_name: sabil_book_local_celerybeat
     depends_on:
-      - redis
-      - postgres
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_started
     ports: []
     command: /start-celerybeat
 

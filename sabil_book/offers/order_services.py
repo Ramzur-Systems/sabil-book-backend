@@ -1,6 +1,5 @@
 """Order state machine. All business transitions acquire the same row lock."""
 
-from functools import partial
 from hashlib import sha256
 
 from django.conf import settings
@@ -10,6 +9,7 @@ from rest_framework.exceptions import PermissionDenied
 
 from sabil_book.exceptions import InvalidTransitionError
 from sabil_book.reviews.models import Dispute
+from sabil_book.transactions import on_commit_robust
 
 from .antivirus import validate_result_file
 from .models import Attachment
@@ -48,7 +48,7 @@ def _complete(order):
     order.completed_at = timezone.now()
     order.review_deadline = None
     order.save(update_fields=["status", "completed_at", "review_deadline"])
-    transaction.on_commit(partial(issue_order_payout.delay, order.pk), robust=True)
+    on_commit_robust(issue_order_payout.delay, order.pk)
     return order
 
 
@@ -83,9 +83,7 @@ def upload_result(order_id, user, uploaded_file):
         attachment.file.save(uploaded_file.name, uploaded_file, save=False)
         attachment.storage_key = attachment.file.name
         attachment.save()
-        transaction.on_commit(
-            partial(scan_attachment.delay, attachment.pk), robust=True,
-        )
+        on_commit_robust(scan_attachment.delay, attachment.pk)
     except Exception:
         if attachment.file.name:
             attachment.file.delete(save=False)
@@ -94,9 +92,12 @@ def upload_result(order_id, user, uploaded_file):
 
 
 def _review(order):
-    if order.attachments.exists() and not order.attachments.filter(
-        av_scan_status=Attachment.ScanStatus.CLEAN,
-    ).exists():
+    if (
+        order.attachments.exists()
+        and not order.attachments.filter(
+            av_scan_status=Attachment.ScanStatus.CLEAN,
+        ).exists()
+    ):
         msg = "No result has passed antivirus scanning."
         raise InvalidTransitionError(msg)
     if order.status == S.DELIVERED:
@@ -172,16 +173,19 @@ def resolve_dispute(order_id, *, in_provider_favour, resolution):
     dispute.save(update_fields=["resolution", "outcome"])
     if in_provider_favour:
         return _complete(order)
-    transaction.on_commit(partial(refund_order.delay, order.pk), robust=True)
+    on_commit_robust(refund_order.delay, order.pk)
     return order
 
 
 @transaction.atomic
 def process_review_timer(order_id):
     order = locked_order(order_id)
-    if order.attachments.exists() and not order.attachments.filter(
-        av_scan_status=Attachment.ScanStatus.CLEAN,
-    ).exists():
+    if (
+        order.attachments.exists()
+        and not order.attachments.filter(
+            av_scan_status=Attachment.ScanStatus.CLEAN,
+        ).exists()
+    ):
         return False
     if order.status not in {S.DELIVERED, S.UNDER_REVIEW}:
         return False
