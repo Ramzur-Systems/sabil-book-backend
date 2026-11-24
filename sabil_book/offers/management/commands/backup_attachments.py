@@ -93,9 +93,13 @@ class Command(BaseCommand):
         # Private from the first byte: the archive holds customers' results.
         fd = os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:
-            with os.fdopen(fd, "wb") as raw, tarfile.open(
-                fileobj=raw, mode="w:gz",
-            ) as archive:
+            with (
+                os.fdopen(fd, "wb") as raw,
+                tarfile.open(
+                    fileobj=raw,
+                    mode="w:gz",
+                ) as archive,
+            ):
                 for key in keys:
                     copied = _read_object(storage, key)
                     if copied is None:

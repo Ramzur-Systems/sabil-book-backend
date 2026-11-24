@@ -104,7 +104,8 @@ def test_completion_queues_no_payout(db, django_capture_on_commit_callbacks):
 
 
 def test_customer_favour_dispute_refunds_without_moving_money(
-    db, django_capture_on_commit_callbacks,
+    db,
+    django_capture_on_commit_callbacks,
 ):
     order = _under_review()
     open_dispute(order.pk, order.offer.request.customer, "Wrong result")
@@ -113,7 +114,9 @@ def test_customer_favour_dispute_refunds_without_moving_money(
         django_capture_on_commit_callbacks(execute=True),
     ):
         resolved = resolve_dispute(
-            order.pk, in_provider_favour=False, resolution="Staff decision",
+            order.pk,
+            in_provider_favour=False,
+            resolution="Staff decision",
         )
     refund.assert_not_called()
     assert resolved.status == S.REFUNDED

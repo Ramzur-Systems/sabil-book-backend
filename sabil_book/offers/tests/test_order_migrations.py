@@ -109,7 +109,8 @@ def test_legacy_finished_orders_get_end_timestamps_for_retention():
         executor = MigrationExecutor(connection)
         executor.migrate(leaves)
         order_model = executor.loader.project_state(leaves).apps.get_model(
-            "offers", "Order",
+            "offers",
+            "Order",
         )
         completed, paid_out, refunded, open_order = (
             order_model.objects.get(pk=pk) for pk in ids

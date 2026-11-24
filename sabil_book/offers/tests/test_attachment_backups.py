@@ -50,7 +50,9 @@ def test_backup_prunes_archives_older_than_retention(stored, tmp_path):
     unrelated = tmp_path / "keep-me.txt"
     unrelated.write_text("x")
     call_command(
-        "backup_attachments", output_dir=str(tmp_path), keep_days=30,
+        "backup_attachments",
+        output_dir=str(tmp_path),
+        keep_days=30,
         stdout=io.StringIO(),
     )
     assert not old.exists()
@@ -111,7 +113,9 @@ def test_backup_skips_objects_deleted_while_it_runs(stored, tmp_path):
     err = io.StringIO()
     with patch.object(backup_attachments, "_read_object", read_after_delete):
         call_command(
-            "backup_attachments", output_dir=str(tmp_path), stdout=io.StringIO(),
+            "backup_attachments",
+            output_dir=str(tmp_path),
+            stdout=io.StringIO(),
             stderr=err,
         )
     (archive,) = _archives(tmp_path)
@@ -133,7 +137,9 @@ def test_archive_is_private_while_being_written(stored, tmp_path):
     try:
         with patch.object(backup_attachments, "_read_object", read_and_check):
             call_command(
-                "backup_attachments", output_dir=str(tmp_path), stdout=io.StringIO(),
+                "backup_attachments",
+                output_dir=str(tmp_path),
+                stdout=io.StringIO(),
             )
     finally:
         os.umask(old_umask)
