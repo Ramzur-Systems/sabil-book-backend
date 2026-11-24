@@ -13,6 +13,7 @@ os.environ.setdefault("POSTGRES_USER", "test")
 os.environ.setdefault("POSTGRES_PASSWORD", "test")
 
 from .base import *  # noqa: F403
+from .base import STORAGES as BASE_STORAGES
 from .base import TEMPLATES
 from .base import env
 
@@ -79,3 +80,8 @@ CHAT_MESSAGE_RATE_LIMIT_ENABLED = False
 KYC_WEBHOOK_SECRET = "test-kyc-webhook-secret"  # noqa: S105
 # Your stuff...
 # ------------------------------------------------------------------------------
+
+STORAGES = {
+    **BASE_STORAGES,
+    "attachments": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+}

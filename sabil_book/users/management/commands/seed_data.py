@@ -4,6 +4,7 @@ import itertools
 import os
 import random
 import secrets
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -19,9 +20,8 @@ from sabil_book.requests.models import Request
 
 DISPUTE_SAMPLE_RATE = 3
 DISPUTED_ORDER_STATUSES = (
-    Order.OrderStatus.DISPUTE,
-    Order.OrderStatus.UNRESOLVED,
-    Order.OrderStatus.REVERTED,
+    Order.OrderStatus.DISPUTED,
+    Order.OrderStatus.REFUNDED,
 )
 
 
@@ -87,6 +87,48 @@ def _validate_counts(n_customers, n_providers, n_requests, n_offers, n_messages)
         raise CommandError(msg)
 
 
+FUNDED_ORDER_STATUSES = frozenset(Order.OrderStatus.values) - {
+    Order.OrderStatus.AWAITING_PAYMENT,
+}
+REVIEW_ORDER_STATUSES = (Order.OrderStatus.DELIVERED, Order.OrderStatus.UNDER_REVIEW)
+COMPLETED_ORDER_STATUSES = (Order.OrderStatus.COMPLETED, Order.OrderStatus.PAID_OUT)
+
+
+def _seed_order_statuses(offers, statuses):
+    """Set statuses plus the timestamps the lifecycle services require."""
+    now = timezone.now()
+    review_period = timedelta(seconds=settings.ORDER_REVIEW_PERIOD_SECONDS)
+    orders = []
+    for index, offer in enumerate(offers):
+        order = offer.order
+        order.status = statuses[index % len(statuses)]
+        if order.status in FUNDED_ORDER_STATUSES:
+            order.funded_at = now
+        if order.status in REVIEW_ORDER_STATUSES:
+            order.delivered_at = now
+            order.review_deadline = now + review_period
+        if order.status == Order.OrderStatus.CORRECTION_REQUESTED:
+            order.correction_reason = "Please revise the result."
+        if order.status in COMPLETED_ORDER_STATUSES:
+            order.delivered_at = now
+            order.completed_at = now
+        if order.status == Order.OrderStatus.REFUNDED:
+            order.refunded_at = now
+        order.save(
+            update_fields=[
+                "status",
+                "funded_at",
+                "delivered_at",
+                "review_deadline",
+                "correction_reason",
+                "completed_at",
+                "refunded_at",
+            ],
+        )
+        orders.append(order)
+    return orders
+
+
 def _seed_post_order_data(
     orders,
     review_factory,
@@ -95,7 +137,7 @@ def _seed_post_order_data(
     payout_factory,
 ):
     confirmed_orders = [
-        order for order in orders if order.status == Order.OrderStatus.CONFIRMED
+        order for order in orders if order.status == Order.OrderStatus.COMPLETED
     ]
     for order in orders:
         payment_factory.create(order=order)
@@ -136,7 +178,6 @@ class Command(BaseCommand):
         # dev-only dependency that isn't installed in the production image.
         from sabil_book.offers.tests.factories import MessageFactory  # noqa: PLC0415
         from sabil_book.offers.tests.factories import OfferFactory  # noqa: PLC0415
-        from sabil_book.offers.tests.factories import OrderFactory  # noqa: PLC0415
         from sabil_book.payments.tests.factories import PaymentFactory  # noqa: PLC0415
         from sabil_book.payments.tests.factories import PayoutFactory  # noqa: PLC0415
         from sabil_book.requests.tests.factories import RequestFactory  # noqa: PLC0415
@@ -200,14 +241,16 @@ class Command(BaseCommand):
                 )
                 accepted_request_ids.add(offer.request_id)
 
-            order_statuses = Order.OrderStatus.values
-            orders = [
-                OrderFactory.create(
-                    offer=offer,
-                    status=order_statuses[index % len(order_statuses)],
-                )
-                for index, offer in enumerate(accepted_offers)
+            order_statuses = [
+                Order.OrderStatus.FUNDED,
+                Order.OrderStatus.DELIVERED,
+                Order.OrderStatus.COMPLETED,
+                Order.OrderStatus.DISPUTED,
+                Order.OrderStatus.REFUNDED,
+                Order.OrderStatus.PAID_OUT,
+                Order.OrderStatus.CORRECTION_REQUESTED,
             ]
+            orders = _seed_order_statuses(accepted_offers, order_statuses)
 
             for index in range(n_messages):
                 MessageFactory.create(

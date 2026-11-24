@@ -18,7 +18,12 @@ MIGRATE_TO = [
 
 
 @pytest.mark.django_db(transaction=True)
-def test_offer_migration_normalizes_legacy_rows():
+def test_offer_migration_normalizes_legacy_rows(request):
+    def restore_schema():
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+
+    request.addfinalizer(restore_schema)
     service_request = RequestFactory()
     first = OfferFactory(
         request=service_request,

@@ -102,3 +102,6 @@ INSTALLED_APPS += ["django_extensions"]
 CELERY_TASK_EAGER_PROPAGATES = True
 # Your stuff...
 # ------------------------------------------------------------------------------
+
+# Immediately fund demo orders without a payment gateway or Celery worker.
+PAYMENT_SIMULATION_ENABLED = env.bool("PAYMENT_SIMULATION_ENABLED", default=True)

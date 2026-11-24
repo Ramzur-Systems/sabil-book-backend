@@ -83,6 +83,8 @@ COPY --from=python-build-stage --chown=django:django ${APP_HOME} ${APP_HOME}
 
 # make django owner of the WORKDIR directory as well.
 RUN chown django:django ${APP_HOME}
+# Mount point for attachment backups; a new named volume inherits this owner.
+RUN mkdir -p /backups/attachments && chown django:django /backups/attachments
 
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"

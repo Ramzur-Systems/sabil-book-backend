@@ -82,6 +82,11 @@ The authenticated preference endpoint is `GET/PATCH /api/notification-settings/m
 Set `receive_non_critical` to `false` to suppress activity updates while retaining
 money and deadline notifications.
 
+### Order lifecycle
+
+Order endpoints, review timers, migration behavior and payment adapter contracts
+are documented in [Order lifecycle](docs/order_lifecycle.md).
+
 ## Deployment
 
 The following details how to deploy this application.

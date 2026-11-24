@@ -4,6 +4,7 @@ from .base import DATABASES
 from .base import INSTALLED_APPS
 from .base import REDIS_URL
 from .base import SPECTACULAR_SETTINGS
+from .base import STORAGES as BASE_STORAGES
 from .base import env
 
 # GENERAL
@@ -68,6 +69,7 @@ GS_BUCKET_NAME = env("DJANGO_GCP_STORAGE_BUCKET_NAME")
 # STATIC & MEDIA
 # ------------------------
 STORAGES = {
+    "attachments": BASE_STORAGES["attachments"],
     "default": {
         "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
         "OPTIONS": {

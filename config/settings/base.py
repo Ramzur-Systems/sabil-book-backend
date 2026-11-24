@@ -7,6 +7,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent.parent.parent
 # sabil_book/
@@ -447,3 +448,93 @@ SPECTACULAR_SETTINGS = {
 KYC_WEBHOOK_SECRET = env("KYC_WEBHOOK_SECRET", default="")
 # Your stuff...
 # ------------------------------------------------------------------------------
+
+# Order lifecycle. Beat scans durable deadlines instead of long ETA messages.
+ORDER_REVIEW_PERIOD_SECONDS = env.int(
+    "ORDER_REVIEW_PERIOD_SECONDS",
+    default=72 * 60 * 60,
+)
+ORDER_RESULT_MAX_BYTES = env.int("ORDER_RESULT_MAX_BYTES", default=25 * 1024 * 1024)
+# Payments are hidden from customers and providers until the payment rules are
+# decided: orders start funded, no money moves, and no payment data is exposed.
+PAYMENTS_ENABLED = env.bool("PAYMENTS_ENABLED", default=False)
+PAYMENT_SIMULATION_ENABLED = env.bool("PAYMENT_SIMULATION_ENABLED", default=False)
+PAYMENT_PROVIDERS_BY_COUNTRY = env.json("PAYMENT_PROVIDERS_BY_COUNTRY", default={})
+PAYMENT_BACKENDS = env.json("PAYMENT_BACKENDS", default={})
+CELERY_BEAT_SCHEDULE = {
+    "order-review-deadlines": {
+        "task": "sabil_book.offers.tasks.process_order_reviews",
+        "schedule": 60.0,
+    },
+    "recover-order-payments": {
+        "task": "sabil_book.payments.tasks.recover_order_payments",
+        "schedule": 60.0,
+    },
+}
+
+
+# Attachments use a separate private bucket, including in local development.
+ATTACHMENT_S3_BUCKET = env("ATTACHMENT_S3_BUCKET", default="sabil-book-results")
+ATTACHMENT_S3_ENDPOINT_URL = env("ATTACHMENT_S3_ENDPOINT_URL", default=None)
+# Host browsers use for signed downloads when workers reach storage internally
+# (e.g. http://seaweedfs:8333 internally, https://files.example.com publicly).
+ATTACHMENT_S3_PUBLIC_ENDPOINT_URL = env(
+    "ATTACHMENT_S3_PUBLIC_ENDPOINT_URL",
+    default=None,
+)
+ATTACHMENT_S3_REGION = env("ATTACHMENT_S3_REGION", default="us-east-1")
+ATTACHMENT_S3_ACCESS_KEY = env("ATTACHMENT_S3_ACCESS_KEY", default=None)
+ATTACHMENT_S3_SECRET_KEY = env("ATTACHMENT_S3_SECRET_KEY", default=None)
+ATTACHMENT_DOWNLOAD_TTL_SECONDS = env.int(
+    "ATTACHMENT_DOWNLOAD_TTL_SECONDS",
+    default=300,
+)
+ATTACHMENT_DOWNLOAD_MAX_TTL_SECONDS = 3600
+if not 1 <= ATTACHMENT_DOWNLOAD_TTL_SECONDS <= ATTACHMENT_DOWNLOAD_MAX_TTL_SECONDS:
+    msg = "ATTACHMENT_DOWNLOAD_TTL_SECONDS must be between 1 and 3600."
+    raise ImproperlyConfigured(msg)
+ORDER_RESULT_ALLOWED_EXTENSIONS = env.list(
+    "ORDER_RESULT_ALLOWED_EXTENSIONS",
+    default=["pdf", "txt", "png", "jpg", "jpeg"],
+)
+CLAMAV_HOST = env("CLAMAV_HOST", default="clamav")
+CLAMAV_PORT = env.int("CLAMAV_PORT", default=3310)
+CLAMAV_TIMEOUT_SECONDS = env.int("CLAMAV_TIMEOUT_SECONDS", default=30)
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    "attachments": {"BACKEND": "sabil_book.offers.storage.PrivateAttachmentStorage"},
+}
+# Recovery only touches scans idle longer than the grace period (longer than a
+# full retry chain); scans still pending after the max age fail closed.
+ATTACHMENT_SCAN_RECOVERY_GRACE_SECONDS = env.int(
+    "ATTACHMENT_SCAN_RECOVERY_GRACE_SECONDS",
+    default=10 * 60,
+)
+ATTACHMENT_SCAN_MAX_PENDING_SECONDS = env.int(
+    "ATTACHMENT_SCAN_MAX_PENDING_SECONDS",
+    default=24 * 60 * 60,
+)
+# Stored objects without a row older than this are swept from the bucket.
+ATTACHMENT_ORPHAN_GRACE_SECONDS = env.int(
+    "ATTACHMENT_ORPHAN_GRACE_SECONDS",
+    default=60 * 60,
+)
+CELERY_BEAT_SCHEDULE["recover-attachment-scans"] = {
+    "task": "sabil_book.offers.tasks.recover_attachment_scans",
+    "schedule": 60.0,
+}
+# Results stay downloadable after completion, then are deleted this many days
+# after the order completes or is refunded.
+ATTACHMENT_RETENTION_DAYS = env.int("ATTACHMENT_RETENTION_DAYS", default=30)
+# Backup archives are deleted after this many days, which bounds how long a
+# purged result can survive in backups.
+ATTACHMENT_BACKUP_KEEP_DAYS = env.int("ATTACHMENT_BACKUP_KEEP_DAYS", default=7)
+CELERY_BEAT_SCHEDULE["purge-expired-attachments"] = {
+    "task": "sabil_book.offers.tasks.purge_expired_attachments",
+    "schedule": 60 * 60.0,
+}
+CELERY_BEAT_SCHEDULE["sweep-orphan-attachments"] = {
+    "task": "sabil_book.offers.tasks.sweep_orphan_attachments",
+    "schedule": 6 * 60 * 60.0,
+}

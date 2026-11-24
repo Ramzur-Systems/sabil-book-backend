@@ -21,6 +21,7 @@ def api_client() -> APIClient:
     return APIClient()
 
 
+@pytest.mark.usefixtures("payments_enabled")
 class TestBecomeProvider:
     def test_creates_provider_profile(self, db, api_client: APIClient):
         user = UserFactory.create()
@@ -124,6 +125,7 @@ class TestPublicProviderProfile:
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
+@pytest.mark.usefixtures("payments_enabled")
 class TestUpdateOwnProviderProfile:
     def test_updates_country_and_payout_provider(self, db, api_client: APIClient):
         user = UserFactory.create()

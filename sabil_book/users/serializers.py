@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.db.models import Avg
 from rest_framework import serializers
@@ -111,6 +112,12 @@ class ProviderProfileSerializer(
         model = ProviderProfile
         fields = ["id", "country", "payout_provider", "kyc_status", "rating"]
         read_only_fields = ["kyc_status"]
+
+    def get_fields(self):
+        fields = super().get_fields()
+        if not settings.PAYMENTS_ENABLED:
+            fields.pop("payout_provider")  # Neither shown nor writable for now.
+        return fields
 
 
 class KYCWebhookSerializer(serializers.Serializer):

@@ -66,6 +66,11 @@ class Dispute(models.Model):
         max_length=255,
         default="",
     )
+    outcome = CharField(
+        max_length=16,
+        blank=True,
+        choices=[("provider", "Provider"), ("customer", "Customer")],
+    )
     resolution = CharField(
         _("Dispute resolution"),
         max_length=255,

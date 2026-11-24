@@ -4,6 +4,8 @@ from rest_framework.routers import DefaultRouter
 from rest_framework.routers import SimpleRouter
 
 from sabil_book.notifications.views import NotificationPreferenceViewSet
+from sabil_book.offers.attachment_views import AttachmentDownloadView
+from sabil_book.offers.order_views import OrderViewSet
 from sabil_book.offers.views import DirectRequestMessageListView
 from sabil_book.offers.views import MessageListView
 from sabil_book.offers.views import OfferViewSet
@@ -30,12 +32,18 @@ router.register(
     ModerationRequestViewSet,
     basename="request-moderation",
 )
+router.register("orders", OrderViewSet, basename="order")
 router.register("offers", OfferViewSet, basename="offer")
 router.register("posts", PostViewSet, basename="post")
 
 app_name = "api"
 urlpatterns = [
     *router.urls,
+    path(
+        "attachments/<int:pk>/download/",
+        AttachmentDownloadView.as_view(),
+        name="attachment-download",
+    ),
     path(
         "offers/<int:offer_id>/messages/",
         MessageListView.as_view(),

@@ -16,5 +16,11 @@ def _media_storage(settings, tmpdir) -> None:
 
 
 @pytest.fixture
+def payments_enabled(settings) -> None:
+    """Opt a test into the (currently hidden) payment flow."""
+    settings.PAYMENTS_ENABLED = True
+
+
+@pytest.fixture
 def user(db) -> User:
     return UserFactory.create()

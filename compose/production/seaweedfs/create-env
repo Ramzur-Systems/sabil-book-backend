@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+### Create .envs/.production/.attachments with a fresh random access key.
+###
+### Run once on the production server, from the repository root:
+###     $ ./compose/production/seaweedfs/create-env https://files.yourdomain.com
+###
+### Never overwrites an existing file (that would orphan the running key).
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+public_url="${1:-}"
+if [[ ! "${public_url}" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]]; then
+    echo "Usage: $0 https://files.yourdomain.com  (https, no path)" >&2
+    exit 1
+fi
+
+target=".envs/.production/.attachments"
+if [[ -e "${target}" ]]; then
+    echo "${target} already exists; not overwriting." >&2
+    exit 1
+fi
+
+random_hex() { od -An -N"$1" -tx1 /dev/urandom | tr -d ' \n'; }
+
+mkdir -p .envs/.production
+umask 077
+cat > "${target}" <<ENV
+# Private result attachments (SeaweedFS). Read by Django, Celery and SeaweedFS.
+# Generated $(date -u +%Y-%m-%dT%H:%M:%SZ). Rotate by editing both keys and
+# restarting seaweedfs, django, celeryworker and celerybeat together.
+ATTACHMENT_S3_BUCKET=sabil-book-results
+ATTACHMENT_S3_ENDPOINT_URL=http://seaweedfs:8333
+ATTACHMENT_S3_PUBLIC_ENDPOINT_URL=${public_url}
+ATTACHMENT_S3_REGION=us-east-1
+ATTACHMENT_S3_ACCESS_KEY=sabil-book-$(random_hex 8)
+ATTACHMENT_S3_SECRET_KEY=$(random_hex 32)
+ENV
+echo "Created ${target} (mode 600) for ${public_url}."

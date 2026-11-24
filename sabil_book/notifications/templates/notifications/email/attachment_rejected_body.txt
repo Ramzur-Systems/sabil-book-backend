@@ -1,0 +1,2 @@
+The result file #{{ attachment_id }} for order #{{ order_id }} could not be published.
+Scan status: {{ scan_status }}. Please upload a safe, undamaged replacement.

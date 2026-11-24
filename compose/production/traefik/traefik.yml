@@ -53,6 +53,17 @@ http:
         # https://doc.traefik.io/traefik/routing/routers/#certresolver
         certResolver: letsencrypt
 
+    # Signed result downloads. Uploads go from Django to SeaweedFS over the
+    # internal network, so the internet only ever needs GET and HEAD. Host is
+    # passed through unchanged, which SigV4 signature checks depend on.
+    files-secure-router:
+      rule: 'Host(`files.example.com`) && (Method(`GET`) || Method(`HEAD`))'
+      entryPoints:
+        - web-secure
+      service: seaweedfs
+      tls:
+        certResolver: letsencrypt
+
     flower-secure-router:
       rule: 'Host(`example.com`)'
       entryPoints:
@@ -84,6 +95,11 @@ http:
       loadBalancer:
         servers:
           - url: http://flower:5555
+
+    seaweedfs:
+      loadBalancer:
+        servers:
+          - url: http://seaweedfs:8333
 
 providers:
   # https://doc.traefik.io/traefik/master/providers/file/

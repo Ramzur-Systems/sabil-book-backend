@@ -127,10 +127,10 @@ class TestMessage:
 
 
 class TestOrder:
-    def test_defaults_to_funded_status(self, db):
+    def test_defaults_to_awaiting_payment_status(self, db):
         offer = OfferFactory.create()
         order = Order.objects.create(offer=offer)
-        assert order.status == Order.OrderStatus.FUNDED
+        assert order.status == Order.OrderStatus.AWAITING_PAYMENT
 
     def test_funded_at_defaults_to_none(self, db):
         offer = OfferFactory.create()
@@ -145,8 +145,8 @@ class TestOrder:
         assert order.funded_at == funded_at
 
     def test_str_is_cheap_and_shows_pk_and_status(self, db):
-        order = OrderFactory.create(status=Order.OrderStatus.DISPUTE)
-        assert str(order) == f"Order #{order.pk} (Dispute)"
+        order = OrderFactory.create(status=Order.OrderStatus.DISPUTED)
+        assert str(order) == f"Order #{order.pk} (Disputed)"
 
     def test_deleted_when_offer_is_deleted(self, db):
         order = OrderFactory.create()

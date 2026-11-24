@@ -8,6 +8,7 @@ class NotificationEvent(StrEnum):
     NEW_OFFER = "new_offer"
     OFFER_SELECTED = "offer_selected"
     PAYMENT_SUCCEEDED = "payment_succeeded"
+    ATTACHMENT_REJECTED = "attachment_rejected"
     RESULT_DELIVERED = "result_delivered"
     ACCEPTANCE_CONFIRMED = "acceptance_confirmed"
     REVISION_REQUESTED = "revision_requested"

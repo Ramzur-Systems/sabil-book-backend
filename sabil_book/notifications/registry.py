@@ -23,6 +23,10 @@ class NotificationDefinition:
 
 
 NOTIFICATION_DEFINITIONS = {
+    NotificationEvent.ATTACHMENT_REJECTED: NotificationDefinition(
+        event=NotificationEvent.ATTACHMENT_REJECTED,
+        category=NotificationCategory.DEADLINE,
+    ),
     NotificationEvent.DIRECT_REQUEST_RECEIVED: NotificationDefinition(
         event=NotificationEvent.DIRECT_REQUEST_RECEIVED,
         category=NotificationCategory.ACTIVITY,

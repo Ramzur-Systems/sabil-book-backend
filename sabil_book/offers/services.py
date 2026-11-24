@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
@@ -5,6 +6,7 @@ from sabil_book.exceptions import InvalidTransitionError
 from sabil_book.requests.models import Request
 
 from .models import Offer
+from .models import Order
 
 
 @transaction.atomic
@@ -41,4 +43,10 @@ def accept_offer(offer_id: int, customer) -> Offer:
         update_fields=["status", "closed_at", "updated_at"],
     )
 
+    if settings.PAYMENTS_ENABLED:
+        defaults = {"status": Order.OrderStatus.AWAITING_PAYMENT}
+    else:
+        # No payment step: the order is ready for delivery straight away.
+        defaults = {"status": Order.OrderStatus.FUNDED, "funded_at": timezone.now()}
+    Order.objects.get_or_create(offer=offer, defaults=defaults)
     return offer

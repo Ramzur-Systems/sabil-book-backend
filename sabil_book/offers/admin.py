@@ -42,12 +42,34 @@ class OfferAdmin(admin.ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ["offer", "status", "funded_at"]
+    list_display = ["offer", "status", "funded_at", "review_deadline"]
+    readonly_fields = [
+        "status",
+        "funded_at",
+        "delivered_at",
+        "review_deadline",
+        "completed_at",
+        "correction_reason",
+    ]
     list_filter = ["status"]
 
 
 @admin.register(Attachment)
 class AttachmentAdmin(admin.ModelAdmin):
-    list_display = ["order"]
+    list_display = ["order", "av_scan_status", "av_scanned_at"]
+    exclude = ["file"]
+    readonly_fields = [
+        "order",
+        "storage_key",
+        "file_hash",
+        "created_at",
+        "av_scan_status",
+        "av_scanned_at",
+        "av_scan_error",
+    ]
+
+    def has_add_permission(self, request):
+        return False
+
     list_filter = ["order__status"]
     search_fields = ["file_hash", "storage_key"]

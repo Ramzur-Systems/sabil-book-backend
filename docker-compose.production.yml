@@ -1,13 +1,38 @@
 volumes:
+  clamav_data: {}
   production_postgres_data: {}
   production_postgres_data_backups: {}
   production_traefik: {}
 
   production_redis_data: {}
+  production_seaweedfs_data: {}
+  production_attachment_backups: {}
 
 
 
 services:
+  clamav:
+    image: clamav/clamav:1.4
+    volumes:
+      - clamav_data:/var/lib/clamav
+    # clamd has no authentication: keep port 3310 inside the Compose network.
+
+  seaweedfs:
+    build:
+      context: .
+      dockerfile: ./compose/production/seaweedfs/Dockerfile
+    image: sabil_book_production_seaweedfs
+    env_file:
+      - ./.envs/.production/.attachments
+    volumes:
+      - production_seaweedfs_data:/data
+    # No published ports: Traefik serves signed downloads; uploads stay internal.
+    healthcheck:
+      test: ['CMD', 'test', '-f', '/tmp/seaweedfs-ready']
+      interval: 5s
+      timeout: 2s
+      retries: 60
+
   django: &django
     build:
       context: .
@@ -15,11 +40,16 @@ services:
 
     image: sabil_book_production_django
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      seaweedfs:
+        condition: service_healthy
     env_file:
       - ./.envs/.production/.django
       - ./.envs/.production/.postgres
+      - ./.envs/.production/.attachments
     command: /start
 
   postgres:
@@ -41,6 +71,7 @@ services:
     depends_on:
       - django
       - websocket
+      - seaweedfs
     volumes:
       - production_traefik:/etc/traefik/acme
     ports:
@@ -58,6 +89,15 @@ services:
   celeryworker:
     <<: *django
     image: sabil_book_production_celeryworker
+    depends_on:
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      clamav:
+        condition: service_started
+      seaweedfs:
+        condition: service_healthy
     command: /start-celeryworker
 
   celerybeat:
@@ -69,6 +109,16 @@ services:
     <<: *django
     image: sabil_book_production_flower
     command: /start-flower
+
+  # On demand only (never started by `up`). Schedule it from the host, e.g.
+  # cron: docker compose -f docker-compose.production.yml run --rm attachments-backup
+  attachments-backup:
+    <<: *django
+    image: sabil_book_production_django
+    profiles: ['maintenance']
+    volumes:
+      - production_attachment_backups:/backups/attachments
+    command: python manage.py backup_attachments --output-dir /backups/attachments
 
   websocket:
     <<: *django
