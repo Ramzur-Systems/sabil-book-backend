@@ -31,8 +31,7 @@ TIME_ZONE = "UTC"
 # https://docs.djangoproject.com/en/dev/ref/settings/#language-code
 LANGUAGE_CODE = "en-us"
 # https://docs.djangoproject.com/en/dev/ref/settings/#languages
-# from django.core.exceptions import ImproperlyConfigured
-
+# from django.utils.translation import gettext_lazy as _
 # LANGUAGES = [
 #     ('en', _('English')),
 #     ('fr-fr', _('French')),
@@ -490,7 +489,23 @@ STORAGES = {
     "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
     "attachments": {"BACKEND": "sabil_book.offers.storage.PrivateAttachmentStorage"},
 }
+# Recovery only touches scans idle longer than the grace period (longer than a
+# full retry chain); scans still pending after the max age fail closed.
+ATTACHMENT_SCAN_RECOVERY_GRACE_SECONDS = env.int(
+    "ATTACHMENT_SCAN_RECOVERY_GRACE_SECONDS", default=10 * 60,
+)
+ATTACHMENT_SCAN_MAX_PENDING_SECONDS = env.int(
+    "ATTACHMENT_SCAN_MAX_PENDING_SECONDS", default=24 * 60 * 60,
+)
+# Stored objects without a row older than this are swept from the bucket.
+ATTACHMENT_ORPHAN_GRACE_SECONDS = env.int(
+    "ATTACHMENT_ORPHAN_GRACE_SECONDS", default=60 * 60,
+)
 CELERY_BEAT_SCHEDULE["recover-attachment-scans"] = {
     "task": "sabil_book.offers.tasks.recover_attachment_scans",
     "schedule": 60.0,
+}
+CELERY_BEAT_SCHEDULE["sweep-orphan-attachments"] = {
+    "task": "sabil_book.offers.tasks.sweep_orphan_attachments",
+    "schedule": 6 * 60 * 60.0,
 }

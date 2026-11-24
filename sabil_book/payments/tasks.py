@@ -13,6 +13,7 @@ from sabil_book.users.models import ProviderProfile
 
 from .models import Payment
 from .models import Payout
+from .services import SIMULATED_PROVIDER
 from .services import PaymentIntegrationUnavailable
 from .services import payment_backend
 
@@ -40,11 +41,17 @@ def issue_order_payout(order_id):
         provider = order.offer.provider
         payout = order.payouts.first()
         if payout is None:
+            # Simulated collections are paid out by the simulator, never by a
+            # real payout adapter configured on the provider profile.
+            if payment.provider == SIMULATED_PROVIDER:
+                payout_provider = SIMULATED_PROVIDER
+            else:
+                payout_provider = provider.payout_provider or payment.provider
             payout = Payout.objects.create(
                 order=order,
                 amount=payment.amount,
                 currency=payment.currency,
-                provider=provider.payout_provider or payment.provider,
+                provider=payout_provider,
             )
         if payout.status in {Payout.PayoutStatus.PAID, Payout.PayoutStatus.CANCELLED}:
             return

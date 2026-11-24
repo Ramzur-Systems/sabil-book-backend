@@ -1,4 +1,5 @@
 # ruff: noqa: PLR2004, S105
+from datetime import timedelta
 from hashlib import sha256
 from io import BytesIO
 from unittest.mock import Mock
@@ -23,6 +24,7 @@ from sabil_book.offers.order_services import upload_result
 from sabil_book.offers.storage import PrivateAttachmentStorage
 from sabil_book.offers.tasks import recover_attachment_scans
 from sabil_book.offers.tasks import scan_attachment
+from sabil_book.offers.tasks import sweep_orphan_attachments
 from sabil_book.offers.tests.factories import OrderFactory
 from sabil_book.users.tests.factories import UserFactory
 
@@ -107,7 +109,7 @@ def test_rejected_scan_notifies_provider_and_allows_replacement(order, result):
     assert upload(order).av_scan_status == "pending"
 
 
-def test_scanner_outage_retries_and_exhaustion_fails_closed(order):
+def test_scanner_outage_retries_then_stays_pending_until_max_age(order):
     attachment = upload(order)
     with patch(
         "sabil_book.offers.antivirus.scan_stream",
@@ -120,22 +122,110 @@ def test_scanner_outage_retries_and_exhaustion_fails_closed(order):
             scan_attachment(attachment.pk)
         attachment.refresh_from_db()
         assert attachment.av_scan_status == "pending"
+        # Exhausted retries during an outage leave the row for recovery.
+        scan_attachment.apply(args=[attachment.pk], retries=3).get()
+        attachment.refresh_from_db()
+        assert attachment.av_scan_status == "pending"
+        assert not NotificationDelivery.objects.filter(
+            event="attachment_rejected",
+        ).exists()
+        Attachment.objects.filter(pk=attachment.pk).update(
+            created_at=timezone.now() - timedelta(days=2),
+        )
         scan_attachment.apply(args=[attachment.pk], retries=3).get()
     attachment.refresh_from_db()
     assert attachment.av_scan_status == "error"
     assert order.status == S.FUNDED
 
 
-def test_recovery_requeues_pending_only(order):
+def _age(attachment, **delta):
+    Attachment.objects.filter(pk=attachment.pk).update(
+        created_at=timezone.now() - timedelta(**delta),
+    )
+
+
+def test_recovery_skips_fresh_and_recently_queued_scans(order):
     attachment = upload(order)
     with patch("sabil_book.offers.tasks.scan_attachment.delay") as enqueue:
         recover_attachment_scans()
+        enqueue.assert_not_called()  # Fresh upload: its own task is in flight.
+        _age(attachment, minutes=11)
+        recover_attachment_scans()
         enqueue.assert_called_once_with(attachment.pk)
-        attachment.av_scan_status = "error"
-        attachment.save()
         enqueue.reset_mock()
         recover_attachment_scans()
+        enqueue.assert_not_called()  # Just re-queued; no duplicate chain.
+        Attachment.objects.filter(pk=attachment.pk).update(
+            av_scan_queued_at=timezone.now() - timedelta(minutes=11),
+        )
+        recover_attachment_scans()
+        enqueue.assert_called_once_with(attachment.pk)
+        enqueue.reset_mock()
+        attachment.av_scan_status = "error"
+        attachment.save()
+        recover_attachment_scans()
         enqueue.assert_not_called()
+
+
+def test_recovery_fails_closed_after_max_age(order):
+    attachment = upload(order)
+    _age(attachment, days=2)
+    with patch("sabil_book.offers.tasks.scan_attachment.delay") as enqueue:
+        recover_attachment_scans()
+        enqueue.assert_not_called()
+    attachment.refresh_from_db()
+    assert attachment.av_scan_status == "error"
+
+
+def test_rejected_scan_deletes_stored_object(
+    order, django_capture_on_commit_callbacks,
+):
+    attachment = upload(order)
+    storage, key = attachment.file.storage, attachment.file.name
+    assert storage.exists(key)
+    with (
+        patch("sabil_book.offers.antivirus.scan_stream", return_value="infected"),
+        django_capture_on_commit_callbacks(execute=True),
+    ):
+        scan_attachment(attachment.pk)
+    attachment.refresh_from_db()
+    assert not storage.exists(key)
+    assert not attachment.file
+    assert attachment.storage_key == key
+
+
+def test_sweeper_deletes_only_old_unreferenced_objects(order, settings):
+    attachment = upload(order)
+    storage = attachment.file.storage
+    orphan = storage.save(f"results/{order.pk}/orphan.txt", BytesIO(b"x"))
+    settings.ATTACHMENT_ORPHAN_GRACE_SECONDS = 3600
+    assert sweep_orphan_attachments() == 0  # Too new: upload may be in flight.
+    settings.ATTACHMENT_ORPHAN_GRACE_SECONDS = -1
+    assert sweep_orphan_attachments() == 1
+    assert not storage.exists(orphan)
+    assert storage.exists(attachment.file.name)
+
+
+def test_legacy_attachment_without_file_is_not_scanned(order):
+    attachment = Attachment.objects.create(order=order, file_hash="abc")
+    scan_attachment(attachment.pk)
+    attachment.refresh_from_db()
+    assert attachment.av_scan_status == "error"
+
+
+def test_download_filename_keeps_extension(order):
+    attachment = upload(order)
+    Attachment.objects.filter(pk=attachment.pk).update(av_scan_status="clean")
+    Order.objects.filter(pk=order.pk).update(status=S.DELIVERED)
+    client = APIClient()
+    client.force_authenticate(order.offer.request.customer)
+    with patch.object(
+        attachment.file.storage, "url", return_value="https://s3.test/signed",
+    ) as url:
+        response = client.get(f"/api/attachments/{attachment.pk}/download/")
+    assert response.status_code == 200
+    disposition = url.call_args.kwargs["parameters"]["ResponseContentDisposition"]
+    assert disposition == 'attachment; filename="result.txt"'
 
 
 @pytest.mark.parametrize("av_status", Attachment.ScanStatus.values)

@@ -56,3 +56,34 @@ def test_legacy_order_statuses_and_review_deadlines_are_migrated(settings):
     finally:
         executor = MigrationExecutor(connection)
         executor.migrate(leaves)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_legacy_attachments_do_not_block_orders_after_scan_migration():
+    executor = MigrationExecutor(connection)
+    leaves = executor.loader.graph.leaf_nodes()
+    old_target = [
+        ("offers", "0011_attachment_av_scan_error_attachment_av_scan_status_and_more"),
+    ]
+    offer = OfferFactory()
+    try:
+        executor.migrate(old_target)
+        apps = executor.loader.project_state(old_target).apps
+        old_order = apps.get_model("offers", "Order")
+        old_attachment = apps.get_model("offers", "Attachment")
+        order = old_order.objects.create(offer_id=offer.pk, status="delivered")
+        legacy = old_attachment.objects.create(order_id=order.pk, file_hash="abc")
+        uploaded = old_attachment.objects.create(
+            order_id=order.pk, file_hash="def", file="results/1/new.pdf",
+        )
+        assert legacy.av_scan_status == "pending"
+        executor = MigrationExecutor(connection)
+        executor.migrate(leaves)
+        apps = executor.loader.project_state(leaves).apps
+        attachment_model = apps.get_model("offers", "Attachment")
+        assert attachment_model.objects.get(pk=legacy.pk).av_scan_status == "clean"
+        # Real uploads still awaiting a scan are left for the scanner.
+        assert attachment_model.objects.get(pk=uploaded.pk).av_scan_status == "pending"
+    finally:
+        executor = MigrationExecutor(connection)
+        executor.migrate(leaves)

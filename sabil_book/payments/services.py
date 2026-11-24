@@ -22,7 +22,14 @@ class PaymentIntegrationUnavailable(APIException):
     default_detail = "Payment provider is not configured for this country."
 
 
+SIMULATED_PROVIDER = "simulated"
+
+
 def payment_backend(provider):
+    if provider == SIMULATED_PROVIDER and settings.PAYMENT_SIMULATION_ENABLED:
+        from .backends import SimulatedPaymentBackend  # noqa: PLC0415
+
+        return SimulatedPaymentBackend()
     path = settings.PAYMENT_BACKENDS.get(provider)
     if not path:
         raise PaymentIntegrationUnavailable

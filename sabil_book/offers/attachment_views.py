@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from django.conf import settings
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
@@ -44,10 +46,14 @@ class AttachmentDownloadView(APIView):
             msg = "This result is not available for download."
             raise PermissionDenied(msg)
         ttl = settings.ATTACHMENT_DOWNLOAD_TTL_SECONDS
+        # The suffix comes from attachment_upload_to and is already normalised.
+        filename = f"result{Path(attachment.file.name).suffix}"
         url = attachment.file.storage.url(
             attachment.file.name,
             expire=ttl,
-            parameters={"ResponseContentDisposition": 'attachment; filename="result"'},
+            parameters={
+                "ResponseContentDisposition": f'attachment; filename="{filename}"',
+            },
         )
         return Response(
             {"url": url, "expires_in": ttl},

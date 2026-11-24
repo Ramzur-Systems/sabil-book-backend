@@ -1,4 +1,5 @@
 from datetime import timedelta
+from functools import partial
 
 from django.conf import settings
 from django.db import transaction
@@ -60,7 +61,15 @@ def finish_scan(attachment_id, result, error=""):
     attachment.av_scan_status = result
     attachment.av_scan_error = error
     attachment.av_scanned_at = timezone.now()
-    attachment.save(update_fields=["av_scan_status", "av_scan_error", "av_scanned_at"])
+    update_fields = ["av_scan_status", "av_scan_error", "av_scanned_at"]
+    if result != Attachment.ScanStatus.CLEAN and attachment.file:
+        # Rejected objects are never served; drop them once the verdict commits.
+        # storage_key keeps the original key for auditing.
+        storage, key = attachment.file.storage, attachment.file.name
+        transaction.on_commit(partial(storage.delete, key), robust=True)
+        attachment.file = ""
+        update_fields.append("file")
+    attachment.save(update_fields=update_fields)
     if result != Attachment.ScanStatus.CLEAN:
         NotificationService.notify(
             event=NotificationEvent.ATTACHMENT_REJECTED,

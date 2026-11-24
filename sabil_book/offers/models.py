@@ -215,6 +215,8 @@ class Attachment(models.Model):
         db_index=True,
     )
     av_scanned_at = DateTimeField(null=True, blank=True)
+    # Last time recovery re-enqueued the scan; throttles duplicate task chains.
+    av_scan_queued_at = DateTimeField(null=True, blank=True)
     av_scan_error = models.TextField(blank=True)
 
     order = models.ForeignKey(
