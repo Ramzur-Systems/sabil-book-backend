@@ -30,6 +30,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "completed_at",
             "correction_reason",
             "attachments",
+            "delivery_due_date",
         ]
         read_only_fields = fields
 

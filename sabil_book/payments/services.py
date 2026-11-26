@@ -3,6 +3,7 @@
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
+from datetime import timedelta
 from django.utils.module_loading import import_string
 from rest_framework.exceptions import APIException
 
@@ -89,7 +90,8 @@ def confirm_payment(payment_id):
         raise InvalidTransitionError(msg)
     order.transition_to(Order.OrderStatus.FUNDED)
     order.funded_at = timezone.now()
-    order.save(update_fields=["status", "funded_at"])
+    order.delivery_due_date = order.funded_at + timedelta(days=order.offer.delivery_days)
+    order.save(update_fields=["status", "funded_at", "delivery_due_date"])
     payment.status = Payment.PaymentStatus.SUCCEEDED
     payment.save(update_fields=["status"])
     return order

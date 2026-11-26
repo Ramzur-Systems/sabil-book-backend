@@ -3,6 +3,7 @@ from datetime import timedelta
 import pytest
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
+from django.utils import timezone
 
 from sabil_book.offers.tests.factories import OfferFactory
 
@@ -120,6 +121,45 @@ def test_legacy_finished_orders_get_end_timestamps_for_retention():
         assert refunded.refunded_at is not None
         assert open_order.completed_at is None
         assert open_order.refunded_at is None
+    finally:
+        executor = MigrationExecutor(connection)
+        executor.migrate(leaves)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_open_orders_get_delivery_due_dates():
+    executor = MigrationExecutor(connection)
+    leaves = executor.loader.graph.leaf_nodes()
+    old_target = [("offers", "0015_order_delivery_due_at")]
+    statuses = ["funded", "correction_requested", "awaiting_payment", "under_review"]
+    offers = [OfferFactory(delivery_days=3) for _ in statuses]
+    funded_at = timezone.now() - timedelta(days=10)
+    try:
+        executor.migrate(old_target)
+        apps = executor.loader.project_state(old_target).apps
+        old_order = apps.get_model("offers", "Order")
+        ids = [
+            old_order.objects.create(
+                offer_id=offer.pk,
+                status=status,
+                funded_at=None if status == "awaiting_payment" else funded_at,
+            ).pk
+            for offer, status in zip(offers, statuses, strict=True)
+        ]
+        before = timezone.now()
+        executor = MigrationExecutor(connection)
+        executor.migrate(leaves)
+        order_model = executor.loader.project_state(leaves).apps.get_model(
+            "offers",
+            "Order",
+        )
+        funded, correction, unpaid, reviewing = (
+            order_model.objects.get(pk=pk) for pk in ids
+        )
+        assert funded.delivery_due_date == funded_at + timedelta(days=3)
+        assert correction.delivery_due_date >= before + timedelta(days=3)
+        assert unpaid.delivery_due_date is None
+        assert reviewing.delivery_due_date is None
     finally:
         executor = MigrationExecutor(connection)
         executor.migrate(leaves)

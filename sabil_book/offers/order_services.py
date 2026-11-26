@@ -18,10 +18,10 @@ from .models import Order
 S = Order.OrderStatus
 ORDER_TRANSITIONS = {
     S.AWAITING_PAYMENT: {S.FUNDED},
-    S.FUNDED: {S.DELIVERED},
+    S.FUNDED: {S.DELIVERED, S.DISPUTED},
     S.DELIVERED: {S.UNDER_REVIEW},
     S.UNDER_REVIEW: {S.COMPLETED, S.CORRECTION_REQUESTED, S.DISPUTED},
-    S.CORRECTION_REQUESTED: {S.DELIVERED},
+    S.CORRECTION_REQUESTED: {S.DELIVERED, S.DISPUTED},
     S.COMPLETED: {S.PAID_OUT},
     S.DISPUTED: {S.COMPLETED, S.REFUNDED},
     S.PAID_OUT: set(),
@@ -91,7 +91,6 @@ def upload_result(order_id, user, uploaded_file):
         raise
     return order
 
-
 def _review(order):
     if (
         order.attachments.exists()
@@ -114,6 +113,13 @@ def _review(order):
         msg = "The review period has expired."
         raise InvalidTransitionError(msg)
 
+def _require_overdue(order):
+    if order.delivery_due_date is None:
+        msg = "The order has no delivery due date."
+        raise InvalidTransitionError(msg)
+    if timezone.now() < order.delivery_due_date:
+        msg = "The delivery period has not yet expired."
+        raise InvalidTransitionError(msg)
 
 @transaction.atomic
 def accept_result(order_id, user):
@@ -134,7 +140,8 @@ def request_correction(order_id, user, reason):
     order.transition_to(S.CORRECTION_REQUESTED)
     order.correction_reason = reason.strip()
     order.review_deadline = None
-    order.save(update_fields=["status", "correction_reason", "review_deadline"])
+    order.delivery_due_date = timezone.now() + timezone.timedelta(days=order.offer.delivery_days)
+    order.save(update_fields=["status", "correction_reason", "review_deadline", "delivery_due_date"])
     return order
 
 
@@ -142,7 +149,11 @@ def request_correction(order_id, user, reason):
 def open_dispute(order_id, user, reason):
     order = locked_order(order_id)
     require_customer(order, user)
-    _review(order)
+    if order.status in {S.FUNDED, S.CORRECTION_REQUESTED}:
+        _require_overdue(order)
+    else:
+        _review(order)
+
     if not reason.strip():
         msg = "A dispute reason is required."
         raise InvalidTransitionError(msg)

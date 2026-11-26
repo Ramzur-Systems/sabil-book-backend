@@ -167,6 +167,7 @@ class Order(models.Model):
         DISPUTED = "disputed", _("Disputed")
         PAID_OUT = "paid_out", _("Paid out")
         REFUNDED = "refunded", _("Refunded")
+        
 
     offer = models.OneToOneField(
         Offer,
@@ -186,6 +187,7 @@ class Order(models.Model):
     completed_at = DateTimeField(null=True, blank=True)
     refunded_at = DateTimeField(null=True, blank=True)
     correction_reason = models.TextField(blank=True)
+    delivery_due_date = DateTimeField(null=True, blank=True, db_index=True)
 
     def __str__(self) -> str:
         return f"Order #{self.pk} ({self.get_status_display()})"
