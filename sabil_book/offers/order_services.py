@@ -120,6 +120,9 @@ def _require_overdue(order):
     if timezone.now() < order.delivery_due_date:
         msg = "The delivery period has not yet expired."
         raise InvalidTransitionError(msg)
+    if order.attachments.filter(av_scan_status=Attachment.ScanStatus.PENDING).exists():
+        msg = "A delivered result is still being scanned."
+        raise InvalidTransitionError(msg)
 
 @transaction.atomic
 def accept_result(order_id, user):

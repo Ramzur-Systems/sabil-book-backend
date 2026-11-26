@@ -197,3 +197,33 @@ def test_overdue_dispute_can_be_refunded(order):
     )
     assert resolved.status == S.REFUNDED
     assert resolved.refunded_at is not None
+
+def test_dispute_waits_for_pending_scan(order):
+    upload_result(
+        order.pk,
+        order.offer.provider.user,
+        SimpleUploadedFile("result.txt", b"Result", content_type="text/plain"),
+    )
+    with (
+        at(order.delivery_due_date + timedelta(days=1)),
+        pytest.raises(InvalidTransitionError),
+    ):
+        open_dispute(order.pk, customer(order), "Nothing delivered")
+    with patch("sabil_book.offers.antivirus.scan_stream", return_value="clean"):
+        scan_attachment(order.attachments.get().pk)
+    order.refresh_from_db()
+    assert order.status == S.DELIVERED
+    assert order.attachments.get().file
+
+
+def test_dispute_allowed_after_failed_scan(order):
+    upload_result(
+        order.pk,
+        order.offer.provider.user,
+        SimpleUploadedFile("result.txt", b"Result", content_type="text/plain"),
+    )
+    with patch("sabil_book.offers.antivirus.scan_stream", return_value="infected"):
+        scan_attachment(order.attachments.get().pk)
+    with at(order.delivery_due_date + timedelta(days=1)):
+        assert open_dispute(order.pk, customer(order), "Bad file").status == S.DISPUTED
+
